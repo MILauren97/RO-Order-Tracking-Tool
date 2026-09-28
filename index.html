@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Parcel Tracking — RO</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+:root {
+  --bg:       #0f1420;
+  --surface:  #141b2d;
+  --surface2: #1a2236;
+  --border:   #252d3d;
+  --border2:  #2e3a50;
+  --text:     #e8eaf0;
+  --muted:    #6b7694;
+  --accent:   #e85d2f;
+  --blue:     #378add;
+  --green:    #639922;
+  --amber:    #ef9f27;
+  --red:      #e24b4a;
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'DM Mono', monospace;
+  --radius:   6px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 13px; min-height: 100vh; }
+
+/* ── Header ── */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 24px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.header-left { display: flex; align-items: center; gap: 12px; }
+.ro-badge {
+  width: 36px; height: 36px; background: var(--accent);
+  border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-weight: 700; font-size: 13px; color: #fff;
+}
+.header h1 { font-size: 16px; font-weight: 600; }
+.header-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.report-date { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+
+/* ── Upload zone ── */
+.upload-zone {
+  margin: 16px 24px;
+  background: var(--surface); border: 1px dashed var(--border2);
+  border-radius: 10px; padding: 16px 20px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.upload-zone-icon { font-size: 24px; opacity: 0.5; }
+.upload-zone h3 { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.upload-zone p  { font-size: 11px; color: var(--muted); }
+.file-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px; font-size: 12px; font-family: var(--font-mono);
+  background: transparent; border: 1px solid var(--border2);
+  border-radius: var(--radius); color: var(--muted); cursor: pointer;
+  transition: all 0.15s;
+}
+.file-btn:hover { border-color: var(--accent); color: var(--accent); }
+.file-btn.loaded { border-color: var(--green); color: var(--green); }
+.file-btn input { display: none; }
+
+/* ── Main ── */
+.main { padding: 0 24px 32px; }
+
+/* ── Mini KPIs ── */
+.mini-kpi {
+  display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.mini-kpi-item {
+  background: var(--surface); border: 0.5px solid var(--border);
+  border-radius: var(--radius); padding: 10px 16px; flex: 1; min-width: 100px;
+}
+.mk-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 4px; }
+.mk-val   { font-size: 18px; font-weight: 300; font-family: var(--font-mono); color: var(--text); }
+
+/* ── Controls ── */
+.controls {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 12px; padding-bottom: 12px;
+  border-bottom: 0.5px solid var(--border);
+}
+.search-input {
+  flex: 1; min-width: 180px; padding: 7px 10px; font-size: 12px;
+  background: var(--surface); border: 0.5px solid var(--border2);
+  border-radius: var(--radius); color: var(--text); font-family: var(--font-sans);
+}
+.search-input::placeholder { color: var(--muted); }
+.filter-select {
+  padding: 7px 10px; font-size: 12px;
+  background: var(--surface); border: 0.5px solid var(--border2);
+  border-radius: var(--radius); color: var(--text); font-family: var(--font-sans);
+}
+.row-count { font-size: 11px; color: var(--muted); margin-left: auto; }
+.export-group { display: flex; align-items: center; gap: 4px; }
+.export-label { font-size: 11px; color: var(--muted); margin-right: 2px; }
+.export-btn {
+  padding: 5px 10px; font-size: 11px; background: transparent;
+  border: 0.5px solid var(--border2); border-radius: var(--radius);
+  color: var(--muted); cursor: pointer; font-family: var(--font-sans);
+}
+.export-btn:hover { color: var(--text); border-color: var(--accent); }
+
+/* ── Table ── */
+.table-wrapper { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th {
+  padding: 7px 10px; text-align: left;
+  font-size: 10px; font-weight: 500; letter-spacing: 0.6px; text-transform: uppercase;
+  color: var(--muted); border-bottom: 0.5px solid var(--border);
+  white-space: nowrap; cursor: pointer; user-select: none;
+  background: var(--surface);
+}
+thead th:hover { color: var(--text); }
+thead th.num { text-align: right; }
+.sort-arrow { font-size: 10px; opacity: 0.4; margin-left: 3px; }
+thead th:hover .sort-arrow { opacity: 1; color: var(--accent); }
+tbody tr { border-bottom: 0.5px solid var(--border); }
+tbody tr:nth-child(even) { background: var(--surface); }
+tbody tr:hover { background: var(--surface2); }
+td { padding: 8px 10px; vertical-align: middle; }
+td.muted { color: var(--muted); }
+td.mono  { font-family: var(--font-mono); font-size: 11px; }
+td.num   { text-align: right; font-variant-numeric: tabular-nums; }
+td.bold  { font-weight: 500; }
+.track-link {
+  color: var(--blue); text-decoration: none;
+  font-family: var(--font-mono); font-size: 11px;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.track-link:hover { text-decoration: underline; }
+.badge {
+  display: inline-block; padding: 2px 7px;
+  border-radius: 10px; font-size: 10px; font-weight: 500;
+  background: rgba(239,159,39,0.15); color: var(--amber);
+}
+.empty {
+  text-align: center; padding: 48px 20px;
+  color: var(--muted); font-size: 12px;
+}
+.empty .empty-icon { font-size: 32px; margin-bottom: 8px; opacity: 0.4; }
+
+/* ── Zone notice ── */
+#zoneNotice {
+  margin-top: 10px; padding: 7px 12px;
+  background: rgba(226,75,74,0.08); border: 1px solid rgba(226,75,74,0.3);
+  border-left: 3px solid var(--red); color: var(--red);
+  font-size: 11px; font-family: var(--font-mono); display: none;
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <div class="ro-badge">RO</div>
+    <div>
+      <h1>Parcel Tracking</h1>
+      <div class="header-meta">Shipment tracking by carrier</div>
+    </div>
+  </div>
+  <div class="report-date" id="reportDateDisplay"></div>
+</div>
+
+<!-- Upload zone -->
+<div class="upload-zone" id="uploadZone">
+  <div class="upload-zone-icon">📦</div>
+  <div>
+    <h3>Load Parcel Tracking Report</h3>
+    <p>Drop your Excel file here or use the button — supports .xlsx</p>
+  </div>
+  <label class="file-btn" id="btn-parcel">
+    <span>📦</span> Parcel Tracking (.xlsx)
+    <input type="file" accept=".xlsx" onchange="loadParcelFile(this)">
+  </label>
+  <div id="zoneNotice"></div>
+</div>
+
+<!-- Main content -->
+<div class="main">
+  <div class="mini-kpi" id="miniKpi" style="display:none"></div>
+
+  <div id="tableArea" style="display:none">
+    <div class="controls">
+      <input class="search-input" id="searchInput" type="text"
+             placeholder="Search customer, PO, tracking #…"
+             oninput="filterParcel(this.value)">
+      <select class="filter-select" id="custFilter" onchange="filterByCust(this.value)">
+        <option value="">All customers</option>
+      </select>
+      <select class="filter-select" id="carrierFilter" onchange="filterByCarrier(this.value)">
+        <option value="">All carriers</option>
+      </select>
+      <span class="row-count" id="rowCount"></span>
+      <div class="export-group">
+        <span class="export-label">Export</span>
+        <button class="export-btn" onclick="exportXLSX()">&#8659; XLSX</button>
+        <button class="export-btn" onclick="exportCSV()">&#8659; CSV</button>
+      </div>
+    </div>
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr id="headerRow">
+            <th onclick="sortBy('cust_name')"   id="th-cust_name">Customer <span class="sort-arrow">↑</span></th>
+            <th onclick="sortBy('shipto_name')"  id="th-shipto_name">Ship-to <span class="sort-arrow"></span></th>
+            <th onclick="sortBy('po')"           id="th-po">Customer PO <span class="sort-arrow"></span></th>
+            <th onclick="sortBy('sales_order')"  id="th-sales_order">Sales Order <span class="sort-arrow"></span></th>
+            <th onclick="sortBy('ship_date')"    id="th-ship_date">Ship Date <span class="sort-arrow"></span></th>
+            <th onclick="sortBy('delv_date')"    id="th-delv_date">Delv Date <span class="sort-arrow"></span></th>
+            <th>Tracking # <span class="sort-arrow"></span></th>
+            <th onclick="sortBy('carrier')"      id="th-carrier">Carrier <span class="sort-arrow"></span></th>
+            <th onclick="sortBy('weight')"       id="th-weight" class="num">Weight <span class="sort-arrow"></span></th>
+            <th onclick="sortBy('amount')"       id="th-amount" class="num">Freight $ <span class="sort-arrow"></span></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="emptyState" class="empty">
+    <div class="empty-icon">📦</div>
+    <div>Load a Parcel Tracking report above to get started.</div>
+  </div>
+</div>
+
+<script>
+// ── Carrier routing ──
+const CARRIER_MAP = {
+  FDEG: { label: 'FedEx Ground',    url: t => `https://www.fedex.com/apps/fedextrack/?trknbr=${t}` },
+  FXSP: { label: 'FedEx SmartPost', url: t => `https://www.fedex.com/apps/fedextrack/?trknbr=${t}` },
+  FDES: { label: 'FedEx Express',   url: t => `https://www.fedex.com/apps/fedextrack/?trknbr=${t}` },
+  FDX:  { label: 'FedEx',           url: t => `https://www.fedex.com/apps/fedextrack/?trknbr=${t}` },
+  UPSN: { label: 'UPS',             url: t => `https://www.ups.com/track?tracknum=${t}` },
+  UPS:  { label: 'UPS',             url: t => `https://www.ups.com/track?tracknum=${t}` },
+  UPSG: { label: 'UPS Ground',      url: t => `https://www.ups.com/track?tracknum=${t}` },
+  USPS: { label: 'USPS',            url: t => `https://tools.usps.com/go/TrackConfirmAction?tLabels=${t}` },
+  USPC: { label: 'USPS',            url: t => `https://tools.usps.com/go/TrackConfirmAction?tLabels=${t}` },
+  DHL:  { label: 'DHL',             url: t => `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${t}` },
+};
+function carrierInfo(code) {
+  const c = (code || '').trim().toUpperCase();
+  return CARRIER_MAP[c] || { label: c || '—', url: t => '#' };
+}
+
+// ── State ──
+let allData     = [];
+let filtered    = [];
+let search      = '';
+let custFilter  = '';
+let carrFilter  = '';
+let sortField   = 'cust_name';
+let sortDir     = 1;
+const textFields = new Set(['cust_name','shipto_name','po','sales_order','ship_date','delv_date','carrier']);
+
+function fmt(v) {
+  return '$' + v.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+}
+function fmtDateVal(v) {
+  if (!v) return '';
+  if (v instanceof Date) {
+    return [
+      String(v.getMonth()+1).padStart(2,'0'),
+      String(v.getDate()).padStart(2,'0'),
+      v.getFullYear()
+    ].join('/');
+  }
+  return String(v).slice(0,10);
+}
+
+// ── File loading ──
+function loadParcelFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const btn = document.getElementById('btn-parcel');
+  const reader = new FileReader();
+  reader.onload = e => {
+    btn.classList.add('loaded');
+    btn.querySelector('span').textContent = '✓';
+    // Extract date from filename if present
+    const m = file.name.match(/_?(\d{4})(\d{2})(\d{2})[_-]/);
+    if (m) document.getElementById('reportDateDisplay').textContent =
+      `Report: ${m[2]}/${m[3]}/${m[1]}`;
+    parseFile(e.target.result);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseFile(arrayBuffer) {
+  const wb   = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
+  const ws   = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  allData = rows.map(r => ({
+    cust_name:   String(r['Sold-to Name'] || '').trim(),
+    cust_id:     String(r['Sold-to']      || '').trim(),
+    shipto_name: String(r['Ship-to Name'] || '').trim(),
+    shipto_id:   String(r['Ship-to']      || '').trim(),
+    city:        String(r['City']         || '').trim(),
+    state:       String(r['State']        || '').trim(),
+    po:          String(r['Customer PO']  || '').trim(),
+    sales_order: String(r['SalesOrder']   || '').trim(),
+    delivery:    String(r['Delivery']     || '').trim(),
+    seq:         parseInt(r['Seq'])       || 1,
+    track:       String(r['Tracking Nbr']|| '').trim(),
+    carrier:     String(r['Ship Type']   || '').trim(),
+    ship_date:   fmtDateVal(r['Ship Date']),
+    delv_date:   fmtDateVal(r['Delv Date']),
+    weight:      parseFloat(r['Weight'])  || 0,
+    amount:      parseFloat(r['Amount'])  || 0,
+  })).filter(r => r.track);
+
+  // Populate dropdowns
+  const custSel = document.getElementById('custFilter');
+  const carrSel = document.getElementById('carrierFilter');
+  const custs   = [...new Set(allData.map(r=>r.cust_name).filter(Boolean))].sort();
+  const carrs   = [...new Set(allData.map(r=>r.carrier).filter(Boolean))].sort();
+  custSel.innerHTML = '<option value="">All customers</option>'
+    + custs.map(c=>`<option>${c}</option>`).join('');
+  carrSel.innerHTML = '<option value="">All carriers</option>'
+    + carrs.map(c=>`<option value="${c}">${carrierInfo(c).label}</option>`).join('');
+
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('tableArea').style.display  = '';
+  document.getElementById('miniKpi').style.display    = '';
+  renderMiniKpi(allData);
+  applyFilters();
+}
+
+function renderMiniKpi(data) {
+  const totalWt  = data.reduce((s,r)=>s+r.weight, 0);
+  const totalAmt = data.reduce((s,r)=>s+r.amount, 0);
+  const custs    = new Set(data.map(r=>r.cust_name)).size;
+  const carriers = new Set(data.map(r=>r.carrier)).size;
+  document.getElementById('miniKpi').innerHTML = `
+    <div class="mini-kpi-item"><div class="mk-label">Customers</div><div class="mk-val">${custs}</div></div>
+    <div class="mini-kpi-item"><div class="mk-label">Tracking #s</div><div class="mk-val">${data.length}</div></div>
+    <div class="mini-kpi-item"><div class="mk-label">Carriers</div><div class="mk-val">${carriers}</div></div>
+    <div class="mini-kpi-item"><div class="mk-label">Total Weight</div><div class="mk-val">${totalWt.toLocaleString('en-US',{maximumFractionDigits:1})} lb</div></div>
+    <div class="mini-kpi-item"><div class="mk-label">Freight $</div><div class="mk-val">${fmt(totalAmt)}</div></div>`;
+}
+
+// ── Filtering & sorting ──
+function applyFilters() {
+  let data = [...allData];
+  if (search)     data = data.filter(r => JSON.stringify(r).toLowerCase().includes(search.toLowerCase()));
+  if (custFilter) data = data.filter(r => r.cust_name === custFilter);
+  if (carrFilter) data = data.filter(r => r.carrier   === carrFilter);
+
+  if (textFields.has(sortField)) {
+    data.sort((a,b) => {
+      const av = (a[sortField]||'').toLowerCase();
+      const bv = (b[sortField]||'').toLowerCase();
+      return av < bv ? -sortDir : av > bv ? sortDir : 0;
+    });
+  } else {
+    data.sort((a,b) => (a[sortField]-b[sortField]) * sortDir);
+  }
+
+  filtered = data;
+  document.getElementById('rowCount').textContent = data.length + ' tracking numbers';
+  renderMiniKpi(data);
+  renderTable();
+}
+
+function filterParcel(v)   { search     = v; applyFilters(); }
+function filterByCust(v)   { custFilter = v; applyFilters(); }
+function filterByCarrier(v){ carrFilter = v; applyFilters(); }
+
+function sortBy(field) {
+  if (sortField === field) { sortDir *= -1; }
+  else { sortField = field; sortDir = textFields.has(field) ? 1 : -1; }
+  document.querySelectorAll('#headerRow .sort-arrow').forEach(el => el.textContent = '');
+  const el = document.querySelector(`#th-${field} .sort-arrow`);
+  if (el) el.textContent = sortDir === 1 ? '↑' : '↓';
+  applyFilters();
+}
+
+function renderTable() {
+  const tb = document.getElementById('tbody');
+  if (!filtered.length) {
+    tb.innerHTML = `<tr><td colspan="10" class="empty"><div class="empty-icon">🔍</div>No results matching current filters.</td></tr>`;
+    return;
+  }
+  tb.innerHTML = filtered.map((r,i) => {
+    const ci  = carrierInfo(r.carrier);
+    const url = ci.url(r.track);
+    return `<tr>
+      <td class="bold">${r.cust_name}</td>
+      <td class="muted">${r.shipto_name}</td>
+      <td class="mono muted">${r.po}</td>
+      <td class="mono muted">${r.sales_order}</td>
+      <td>${r.ship_date}</td>
+      <td>${r.delv_date}</td>
+      <td><a class="track-link" href="${url}" target="_blank" rel="noopener"
+             onclick="event.stopPropagation()">${r.track} <span style="opacity:0.5;font-size:10px">&#8599;</span></a></td>
+      <td><span class="badge">${ci.label}</span></td>
+      <td class="num">${r.weight.toFixed(1)} lb</td>
+      <td class="num">${fmt(r.amount)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Export ──
+function exportXLSX() {
+  if (!filtered.length) return;
+  const headers = ['Customer','Ship-To','Customer PO','Sales Order','Ship Date','Delv Date','Tracking #','Carrier','Weight (lb)','Freight $'];
+  const rows = filtered.map(r => [
+    r.cust_name, r.shipto_name, r.po, r.sales_order,
+    r.ship_date, r.delv_date, r.track,
+    carrierInfo(r.carrier).label, r.weight, r.amount
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [20,20,14,14,10,10,16,12,10,10].map(w=>({wch:w}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Parcel Tracking');
+  XLSX.writeFile(wb, `Parcel_Tracking_${new Date().toLocaleDateString('en-US').replace(/\//g,'-')}.xlsx`);
+}
+
+function exportCSV() {
+  if (!filtered.length) return;
+  const headers = ['Customer','Ship-To','Customer PO','Sales Order','Ship Date','Delv Date','Tracking #','Carrier','Weight (lb)','Freight $'];
+  const rows = filtered.map(r => [
+    r.cust_name, r.shipto_name, r.po, r.sales_order,
+    r.ship_date, r.delv_date, r.track,
+    carrierInfo(r.carrier).label, r.weight, r.amount
+  ]);
+  const csv = [headers, ...rows].map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `Parcel_Tracking_${new Date().toLocaleDateString('en-US').replace(/\//g,'-')}.csv`;
+  a.click();
+}
+
+// ── Drag & drop ──
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor = 'var(--accent)'; });
+zone.addEventListener('dragleave', () => { zone.style.borderColor = ''; });
+zone.addEventListener('drop', e => {
+  e.preventDefault(); zone.style.borderColor = '';
+  const file = [...e.dataTransfer.files].find(f => f.name.match(/\.xlsx?$/i));
+  if (!file) {
+    showNotice('Please drop an Excel (.xlsx) file.');
+    return;
+  }
+  const notice = document.getElementById('zoneNotice');
+  if (notice) notice.style.display = 'none';
+  const btn = document.getElementById('btn-parcel');
+  const reader = new FileReader();
+  reader.onload = ev => {
+    btn.classList.add('loaded');
+    btn.querySelector('span').textContent = '✓';
+    const m = file.name.match(/_?(\d{4})(\d{2})(\d{2})[_-]/);
+    if (m) document.getElementById('reportDateDisplay').textContent =
+      `Report: ${m[2]}/${m[3]}/${m[1]}`;
+    parseFile(ev.target.result);
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function showNotice(msg) {
+  const n = document.getElementById('zoneNotice');
+  n.textContent = msg; n.style.display = 'block';
+  clearTimeout(n._t);
+  n._t = setTimeout(() => { n.style.display = 'none'; }, 5000);
+}
+</script>
+</body>
+</html>
