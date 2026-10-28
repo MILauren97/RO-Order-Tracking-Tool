@@ -3,10 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Daily Open Orders — RO</title>
+  <title>RO Daily Tracking Tool</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
 <style>
 :root {
@@ -31,7 +33,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-sans);
 
 /* ── Header ── */
 .header {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 14px 24px; background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
@@ -43,7 +45,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-sans);
 }
 .header h1 { font-size: 16px; font-weight: 600; }
 .header-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
-.report-date { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
+.report-date { font-size: 11px; color: var(--muted); font-family: var(--font-mono); text-align: right; }
 
 /* ── Upload zone ── */
 .upload-zone {
@@ -65,20 +67,16 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-sans);
 .file-btn:hover { border-color: var(--accent); color: var(--accent); }
 .file-btn.loaded { border-color: var(--green); color: var(--green); }
 .file-btn input { display: none; }
-.desc { display: block; font-family: var(--font-sans); font-size: 11px; color: #b9c0d4; margin-top: 2px;
-        min-width: 220px; max-width: 280px; white-space: normal; line-height: 1.3; }
-.desc.missing { color: var(--muted); font-style: italic; }
+.loading { font-size: 11px; color: var(--amber); font-family: var(--font-mono); display: none; }
 
 /* ── Main ── */
 .main { padding: 0 24px 32px; }
 
 /* ── Mini KPIs ── */
-.mini-kpi {
-  display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;
-}
+.mini-kpi { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .mini-kpi-item {
   background: var(--surface); border: 0.5px solid var(--border);
-  border-radius: var(--radius); padding: 10px 16px; flex: 1; min-width: 100px;
+  border-radius: var(--radius); padding: 10px 16px; flex: 1; min-width: 110px;
 }
 .mk-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 4px; }
 .mk-val   { font-size: 18px; font-weight: 300; font-family: var(--font-mono); color: var(--text); }
@@ -91,13 +89,14 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-sans);
   border-bottom: 0.5px solid var(--border);
 }
 .search-input {
-  flex: 1; min-width: 180px; padding: 7px 10px; font-size: 12px;
+  flex: 1 1 320px; min-width: 220px; padding: 8px 12px; font-size: 12.5px;
   background: var(--surface); border: 0.5px solid var(--border2);
   border-radius: var(--radius); color: var(--text); font-family: var(--font-sans);
 }
+.search-input:focus { outline: none; border-color: var(--accent); }
 .search-input::placeholder { color: var(--muted); }
 .filter-select {
-  padding: 7px 10px; font-size: 12px; max-width: 220px;
+  padding: 7px 10px; font-size: 12px; max-width: 210px;
   background: var(--surface); border: 0.5px solid var(--border2);
   border-radius: var(--radius); color: var(--text); font-family: var(--font-sans);
 }
@@ -117,86 +116,130 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-sans);
 }
 .export-btn:hover { color: var(--text); border-color: var(--accent); }
 
-/* ── Table ── */
-/* Table scrolls inside its own box so the column header row stays frozen */
+/* ── Table (scrolls in its own box so the header row stays frozen) ── */
 .table-wrapper {
-  overflow: auto;
-  max-height: calc(100vh - 90px);
+  overflow: auto; max-height: calc(100vh - 90px);
   border: 0.5px solid var(--border); border-radius: var(--radius);
 }
-thead th { box-shadow: inset 0 -1px 0 var(--border2); }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
 thead th {
-  padding: 7px 10px; text-align: left;
+  padding: 8px 10px; text-align: left;
   font-size: 10px; font-weight: 500; letter-spacing: 0.6px; text-transform: uppercase;
-  color: var(--muted); border-bottom: 0.5px solid var(--border);
-  white-space: nowrap; cursor: pointer; user-select: none;
+  color: var(--muted); white-space: nowrap; cursor: pointer; user-select: none;
   background: var(--surface); position: sticky; top: 0; z-index: 1;
+  box-shadow: inset 0 -1px 0 var(--border2);
 }
 thead th:hover { color: var(--text); }
 thead th.num { text-align: right; }
-.sort-arrow { font-size: 10px; opacity: 0.4; margin-left: 3px; }
-thead th:hover .sort-arrow { opacity: 1; color: var(--accent); }
+thead th.sorted { color: var(--text); }
+.sort-arrow { font-size: 10px; margin-left: 3px; color: var(--accent); }
 tbody tr { border-bottom: 0.5px solid var(--border); }
 tbody tr.grp.odd { background: var(--surface); }
 tbody tr.grp:hover { background: var(--surface2); }
 tbody tr.clickable { cursor: pointer; }
 tbody tr.grp.is-open { background: var(--surface2); border-bottom-color: transparent; }
 tbody tr.grp.is-open td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
-
-/* Expanded package rows */
-tbody tr.pkg { background: #111827; border-bottom: 0.5px dashed var(--border); font-size: 11.5px; }
-tbody tr.pkg.last { border-bottom: 1px solid var(--border2); }
-tbody tr.pkg:hover { background: #172033; }
-tbody tr.pkg td { padding-top: 6px; padding-bottom: 6px; }
-tbody tr.pkg td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
-td.pkg-idx { color: var(--muted); padding-left: 28px; font-size: 11px; white-space: nowrap; }
-.pkg-line { display: inline-block; width: 10px; height: 1px; background: var(--border2); margin-right: 8px; vertical-align: middle; }
-
-.pkg-toggle {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 3px 9px; font-size: 11px; font-family: var(--font-mono);
-  background: rgba(55,138,221,0.1); color: var(--blue);
-  border: 0.5px solid rgba(55,138,221,0.35); border-radius: 12px; cursor: pointer;
-}
-.pkg-toggle:hover { background: rgba(55,138,221,0.2); }
-.pkg-toggle .caret { display: inline-block; transition: transform 0.15s; font-size: 10px; }
-.pkg-toggle.open .caret { transform: rotate(90deg); }
 td { padding: 8px 10px; vertical-align: middle; }
 td.muted { color: var(--muted); }
 td.mono  { font-family: var(--font-mono); font-size: 11px; }
 td.num   { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 td.bold  { font-weight: 500; }
 td.nowrap { white-space: nowrap; }
-.sub { display: block; font-size: 10px; color: var(--muted); margin-top: 1px; }
+td.wide { min-width: 170px; }
+.sub { display: block; font-size: 10px; color: var(--muted); margin-top: 1px; font-family: var(--font-sans); }
+.desc { display: block; font-family: var(--font-sans); font-size: 11px; color: #b9c0d4; margin-top: 2px;
+        min-width: 220px; max-width: 300px; white-space: normal; line-height: 1.3; }
+
+/* Expanded line rows */
+tbody tr.line { background: #111827; border-bottom: 0.5px dashed var(--border); font-size: 11.5px; }
+tbody tr.line.last { border-bottom: 1px solid var(--border2); }
+tbody tr.line:hover { background: #172033; }
+tbody tr.line td { padding-top: 6px; padding-bottom: 6px; }
+tbody tr.line td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+td.line-idx { color: var(--muted); padding-left: 30px; font-size: 11px; white-space: nowrap; }
+
+.toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; margin-right: 6px; border-radius: 4px; vertical-align: middle;
+  background: rgba(55,138,221,0.12); color: var(--blue); border: 0.5px solid rgba(55,138,221,0.35);
+  cursor: pointer; font-size: 10px; transition: transform 0.15s;
+}
+.toggle.open { transform: rotate(90deg); }
+.toggle.spacer { visibility: hidden; }
+.line-count { font-size: 10px; color: var(--blue); font-family: var(--font-mono); margin-left: 4px; }
+
 .track-link {
   color: var(--blue); text-decoration: none;
   font-family: var(--font-mono); font-size: 11px;
   display: inline-flex; align-items: center; gap: 3px;
 }
 .track-link:hover { text-decoration: underline; }
+.track-plain { font-family: var(--font-mono); font-size: 11px; color: var(--text); }
+.track-none  { font-size: 11px; color: var(--muted); font-style: italic; }
+.ref-tag { font-size: 8.5px; letter-spacing: 0.5px; padding: 1px 4px; margin-right: 4px; border-radius: 3px;
+           font-family: var(--font-sans); font-weight: 600; vertical-align: 1px; }
+.ref-tag.pro  { background: rgba(99,153,34,0.16);  color: #8cc152; }
+.ref-tag.trk  { background: rgba(55,138,221,0.15); color: var(--blue); }
+.ref-tag.shp  { background: rgba(107,118,148,0.2); color: #9aa3bd; }
+.ref-tag.dlv  { background: rgba(107,118,148,0.2); color: #9aa3bd; }
+.ref-tag.open { background: rgba(239,159,39,0.15); color: var(--amber); }
+.copy-pro { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 0 3px; }
+.copy-pro:hover { color: var(--accent); }
+
 .badge {
   display: inline-block; padding: 2px 7px; white-space: nowrap;
-  border-radius: 10px; font-size: 10px; font-weight: 500;
-  background: rgba(239,159,39,0.15); color: var(--amber);
+  border-radius: 10px; font-size: 10px; font-weight: 500; max-width: 180px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle;
 }
 .badge.ups   { background: rgba(239,159,39,0.15); color: var(--amber); }
 .badge.fedex { background: rgba(55,138,221,0.15); color: var(--blue); }
-.badge.other { background: rgba(107,118,148,0.18); color: var(--muted); }
+.badge.ltl   { background: rgba(99,153,34,0.16); color: #8cc152; }
+.badge.other { background: rgba(107,118,148,0.18); color: #9aa3bd; }
 .cur { font-size: 9px; color: var(--muted); margin-left: 3px; }
-.empty {
-  text-align: center; padding: 48px 20px;
-  color: var(--muted); font-size: 12px;
-}
+.empty { text-align: center; padding: 48px 20px; color: var(--muted); font-size: 12px; }
 .empty .empty-icon { font-size: 32px; margin-bottom: 8px; opacity: 0.4; }
 
-/* ── Zone notice ── */
 #zoneNotice {
-  margin-top: 10px; padding: 7px 12px;
+  margin-top: 10px; padding: 7px 12px; width: 100%;
   background: rgba(226,75,74,0.08); border: 1px solid rgba(226,75,74,0.3);
   border-left: 3px solid var(--red); color: var(--red);
   font-size: 11px; font-family: var(--font-mono); display: none;
 }
+/* ── Queue ── */
+th.q-col, td.q-col { width: 30px; padding-left: 12px; padding-right: 0; cursor: default; }
+.q-col input { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; vertical-align: middle; }
+.main { padding-bottom: 90px; }
+.queue-bar {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 20;
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  background: #1d2740; border: 1px solid var(--accent); border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45); font-size: 12px; white-space: nowrap;
+}
+.queue-bar b { color: var(--accent); font-family: var(--font-mono); }
+.q-sep { width: 1px; height: 20px; background: var(--border2); }
+.q-lbl { font-size: 11px; color: var(--muted); }
+.q-btn, .q-dl {
+  padding: 6px 11px; font-size: 11.5px; border-radius: var(--radius); cursor: pointer; font-family: var(--font-sans);
+  background: transparent; color: var(--text); border: 0.5px solid var(--border2);
+}
+.q-btn:hover { border-color: var(--accent); color: var(--accent); }
+.q-dl { background: rgba(99,153,34,0.18); border-color: rgba(99,153,34,0.5); color: #a6d36b; font-weight: 500; }
+.q-dl.pdf { background: rgba(232,93,47,0.16); border-color: rgba(232,93,47,0.55); color: #f08a64; }
+.q-dl:hover { filter: brightness(1.25); }
+.queue-panel {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 380px; max-width: 100vw; z-index: 30;
+  background: var(--surface); border-left: 1px solid var(--border2); box-shadow: -12px 0 30px rgba(0,0,0,0.4);
+  display: flex; flex-direction: column;
+}
+.qp-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); font-weight: 600; }
+.qp-list { flex: 1; overflow-y: auto; padding: 8px 12px; }
+.qp-item { display: flex; justify-content: space-between; gap: 10px; padding: 10px 6px; border-bottom: 0.5px solid var(--border); }
+.qp-ref { font-family: var(--font-mono); font-size: 12px; color: var(--blue); }
+.qp-sub { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+.qp-x { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 2px 6px; height: fit-content; }
+.qp-x:hover { color: var(--red); }
+.qp-empty { color: var(--muted); font-size: 12px; padding: 20px 6px; }
+.qp-foot { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+@media (max-width: 640px) { .queue-bar { left: 8px; right: 8px; transform: none; flex-wrap: wrap; white-space: normal; } }
 
 @media (max-width: 640px) {
   .header, .main { padding-left: 16px; padding-right: 16px; }
@@ -212,55 +255,52 @@ const PRODUCTS = {"100001":"SK 1GL 4PK ORIGINAL WATERPROOFER","100005":"SK 5GL O
 </head>
 <body>
 
-<!-- Header -->
 <div class="header">
   <div class="header-left">
     <div class="ro-badge">RO</div>
     <div>
-      <h1>Daily Open Orders</h1>
-      <div class="header-meta">Parcel shipments &amp; tracking by carrier</div>
+      <h1>RO Daily Tracking Tool</h1>
+      <div class="header-meta">Orders, deliveries &amp; carrier tracking / PRO numbers</div>
     </div>
   </div>
   <div class="report-date" id="reportDateDisplay"></div>
 </div>
 
-<!-- Upload zone -->
 <div class="upload-zone" id="uploadZone">
   <div class="upload-zone-icon">📦</div>
   <div>
-    <h3>Load Daily Open Orders Report</h3>
-    <p>Drop your Excel file here or use the button — supports .xlsx</p>
+    <h3>Load Combined Tracking / ZV38 Report</h3>
+    <p>Drop your Excel file here or use the button. Also accepts the Daily Open Orders report.</p>
     <p id="prodSource" style="margin-top:3px;font-family:var(--font-mono);font-size:10px"></p>
   </div>
-  <label class="file-btn" id="btn-parcel">
-    <span>📦</span> Daily Open Orders (.xlsx)
-    <input type="file" accept=".xlsx,.xls" onchange="loadParcelFile(this)">
+  <label class="file-btn" id="btn-report">
+    <span>📦</span> Tracking Report (.xlsx)
+    <input type="file" accept=".xlsx,.xls" onchange="loadFile(this)">
   </label>
+  <span class="loading" id="loading">Reading file…</span>
   <div id="zoneNotice"></div>
 </div>
 
-<!-- Main content -->
 <div class="main">
   <div class="mini-kpi" id="miniKpi" style="display:none"></div>
 
   <div id="tableArea" style="display:none">
     <div class="controls">
       <input class="search-input" id="searchInput" type="text"
-             placeholder="Search customer, ship-to, PO, order, material, tracking #…"
-             oninput="filterParcel(this.value)">
-      <select class="filter-select" id="repFilter" onchange="filterByRep(this.value)">
-        <option value="">All sales reps</option>
-      </select>
-      <select class="filter-select" id="custFilter" onchange="filterByCust(this.value)">
-        <option value="">All customers</option>
-      </select>
-      <select class="filter-select" id="stateFilter" onchange="filterByState(this.value)">
-        <option value="">All states</option>
-      </select>
-      <select class="filter-select" id="carrierFilter" onchange="filterByCarrier(this.value)">
-        <option value="">All carriers</option>
+             placeholder="Search description, item #, customer, sold-to, ship-to, carrier, PO #, order, PRO / tracking #…"
+             oninput="onSearch(this.value)">
+      <select class="filter-select" id="custFilter"    onchange="setFilter('cust', this.value)"><option value="">All sold-to customers</option></select>
+      <select class="filter-select" id="carrierFilter" onchange="setFilter('carrier', this.value)"><option value="">All carriers</option></select>
+      <select class="filter-select" id="stateFilter"   onchange="setFilter('state', this.value)"><option value="">All states</option></select>
+      <select class="filter-select" id="plantFilter"   onchange="setFilter('plant', this.value)"><option value="">All plants</option></select>
+      <select class="filter-select" id="refFilter"     onchange="setFilter('ref', this.value)">
+        <option value="">All shipments</option>
+        <option value="pro">Has PRO / tracking #</option>
+        <option value="shp">Shipped, no PRO / tracking #</option>
+        <option value="open">Not shipped yet</option>
       </select>
       <button class="clear-btn" onclick="clearFilters()">Clear</button>
+      <button class="clear-btn" onclick="queueAllResults()" title="Add every shipment matching the current search / filters">+ Queue all results</button>
       <button class="clear-btn" onclick="expandAll(true)">Expand all</button>
       <button class="clear-btn" onclick="expandAll(false)">Collapse all</button>
       <span class="row-count" id="rowCount"></span>
@@ -272,24 +312,7 @@ const PRODUCTS = {"100001":"SK 1GL 4PK ORIGINAL WATERPROOFER","100005":"SK 5GL O
     </div>
     <div class="table-wrapper">
       <table>
-        <thead>
-          <tr id="headerRow">
-            <th onclick="sortBy('cust_name')"   id="th-cust_name">Customer <span class="sort-arrow">↑</span></th>
-            <th onclick="sortBy('shipto_name')" id="th-shipto_name">Ship-to <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('po')"          id="th-po">Customer PO <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('sales_order')" id="th-sales_order">Sales Order <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('material')"    id="th-material">Material <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('qty')"         id="th-qty" class="num">Qty <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('order_sort')"  id="th-order_sort">Order Date <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('ship_sort')"   id="th-ship_sort">Ship Date <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('track')"       id="th-track">Tracking # <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('carrier')"     id="th-carrier">Carrier <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('freight')"     id="th-freight">Freight Terms <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('rep')"         id="th-rep">Sales Rep <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('weight_lb')"   id="th-weight_lb" class="num">Weight <span class="sort-arrow"></span></th>
-            <th onclick="sortBy('amount')"      id="th-amount" class="num">Freight $ <span class="sort-arrow"></span></th>
-          </tr>
-        </thead>
+        <thead><tr id="headerRow"></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
@@ -297,8 +320,23 @@ const PRODUCTS = {"100001":"SK 1GL 4PK ORIGINAL WATERPROOFER","100005":"SK 5GL O
 
   <div id="emptyState" class="empty">
     <div class="empty-icon">📦</div>
-    <div>Load a Daily Open Orders report above to get started.</div>
+    <div>Load a Combined Tracking / ZV38 report above to get started.</div>
   </div>
+</div>
+
+<div class="queue-bar" id="queueBar" style="display:none">
+  <span class="q-icon">📋</span><span id="qCount"></span>
+  <button class="q-btn" onclick="toggleQueuePanel()">View queue</button>
+  <button class="q-btn" onclick="clearQueue()">Clear</button>
+  <span class="q-sep"></span>
+  <span class="q-lbl">Download</span>
+  <button class="q-dl" onclick="downloadQueue('xlsx')">&#8659; Excel</button>
+  <button class="q-dl pdf" onclick="downloadQueue('pdf')">&#8659; PDF</button>
+</div>
+<div class="queue-panel" id="queuePanel" style="display:none">
+  <div class="qp-head"><span id="qpTitle">Download queue</span><button class="qp-x" onclick="toggleQueuePanel(false)">✕</button></div>
+  <div class="qp-list" id="qpList"></div>
+  <div class="qp-foot"><button class="q-dl" onclick="downloadQueue('xlsx')">&#8659; Excel</button><button class="q-dl pdf" onclick="downloadQueue('pdf')">&#8659; PDF (1 shipment per page)</button></div>
 </div>
 
 <script>
@@ -320,448 +358,779 @@ const CARRIER_MAP = {
   USPS:  { label: 'USPS',            url: USPS,  cls: 'other' },
   USPC:  { label: 'USPS',            url: USPS,  cls: 'other' },
   DHL:   { label: 'DHL', url: t => `https://www.dhl.com/us-en/home/tracking.html?tracking-id=${t}`, cls: 'other' },
+
+  // Parcel service-level codes from the SCAC list
+  UPS2:  { label: 'UPS 2nd Day',      url: UPS,   cls: 'ups' },
+  UPS3:  { label: 'UPS 3 Day',        url: UPS,   cls: 'ups' },
+  UPSH:  { label: 'UPS 2 Day',        url: UPS,   cls: 'ups' },
+  FED1:  { label: 'FedEx Next Day',   url: FEDEX, cls: 'fedex' },
+  FED2:  { label: 'FedEx 3 Day',      url: FEDEX, cls: 'fedex' },
+  FEDX:  { label: 'FedEx',            url: FEDEX, cls: 'fedex' },
+  FDCC:  { label: 'FedEx',            url: FEDEX, cls: 'fedex' },
+  FDE:   { label: 'FedEx',            url: FEDEX, cls: 'fedex' },
+  FEGX:  { label: 'FedEx Ground',     url: FEDEX, cls: 'fedex' },
+  USPX:  { label: 'USPS',             url: USPS,  cls: 'other' },
+  PRLC:  { label: 'Purolator',        url: t => `https://www.purolator.com/en/shipping/tracker?pins=${t}`, cls: 'other' },
+
+  // ── LTL carriers (SCAC code → PRO-number tracking page) ──
+  // Carriers change these pages occasionally; every PRO also has a copy button as a backup.
+  // Link check 10/28/2026: ODFL and Estes show results in-page only (no PRO in the URL) — open their tracking page; copy the PRO
+  ODFL: { ltl: true, label: 'Old Dominion',      url: () => `https://www.odfl.com/us/en/tools/trace-track-ltl-freight.html`, noDeepLink: true },
+  RNLO: { ltl: true, label: 'R+L Carriers',      url: p => `https://www2.rlcarriers.com/freight/shipping/shipment-tracing?pro=${p}&docType=PRO&source=web` },
+  RLCA: { ltl: true, label: 'R+L Carriers',      url: p => `https://www2.rlcarriers.com/freight/shipping/shipment-tracing?pro=${p}&docType=PRO&source=web` },
+  RLFV: { ltl: true, label: 'R+L Carriers',      url: p => `https://www2.rlcarriers.com/freight/shipping/shipment-tracing?pro=${p}&docType=PRO&source=web` },
+  EXLA: { ltl: true, label: 'Estes',             url: () => `https://www.estes-express.com/myestes/shipment-tracking/`, noDeepLink: true },
+  ABFS: { ltl: true, label: 'ABF Freight',       url: p => `https://view.arcb.com/nlo/tools/tracking/${p}` },
+  ARCB: { ltl: true, label: 'ABF Freight',       url: p => `https://view.arcb.com/nlo/tools/tracking/${p}` },
+  // Dayton's current tracking link uses the 9-digit PRO (report shows 11 digits with two leading zeros)
+  DAFG: { ltl: true, label: 'Dayton Freight',    url: p => `https://tools.daytonfreight.com/tracking/detail?id=${p}`,
+          proFormat: p => (p.length === 11 && p.startsWith('00')) ? p.slice(2) : p },
+  CTII: { ltl: true, label: 'Central Transport', url: p => `https://www.centraltransport.com/tools/shipment-status?pro=${p}` },
+  CTRA: { ltl: true, label: 'Central Transport', url: p => `https://www.centraltransport.com/tools/shipment-status?pro=${p}` },
+  PITD: { ltl: true, label: 'Pitt Ohio',         url: p => `https://pittohio.com/myPittOhio/Shipping/LTL/TraceRequest?pro=${p}` },
+  AACT: { ltl: true, label: 'AAA Cooper',        url: p => `https://www.aaacooper.com/pwb/Transit/ProTrackResults.aspx?ProNum=${p}` },
+  PYLE: { ltl: true, label: 'A. Duie Pyle',      url: p => `https://mypyle.aduiepyle.com/LTL/ShipmentTracking?Pro=${p}` },
+  SAIA: { ltl: true, label: 'Saia',              url: p => `https://www.saia.com/track/details?pro=${p}` },
+  SAIB: { ltl: true, label: 'Saia',              url: p => `https://www.saia.com/track/details?pro=${p}` },
+  SEFL: { ltl: true, label: 'Southeastern Freight', url: p => `https://www.sefl.com/webconnect/tracing?Type=PN&RefNum1=${p}` },
+  AVRT: { ltl: true, label: 'Averitt',           url: p => `https://tools.averitt.com/servlet/rsoLTLtrack?Type=PN&Number=${p.padStart(10, '0')}` },
+  CNWY: { ltl: true, label: 'XPO',               url: p => `https://ext-web.ltl-xpo.com/public-app/shipments?referenceNumber=${p}` },
+  TFIN: { ltl: true, label: 'TForce Freight',    url: p => `https://www.tforcefreight.com/ltl/apps/Tracking?proNumbers=${p}` },
+  DPHE: { ltl: true, label: 'Dependable Hwy Express', url: p => `https://portal.godependable.com/secure/ltl/tracking?pro=${p}` },
+  DPHT: { ltl: true, label: 'Dependable Hwy Express', url: p => `https://portal.godependable.com/secure/ltl/tracking?pro=${p}` },
+  FXFE: { ltl: true, label: 'FedEx Freight',     url: FEDEX },
+  FXNL: { ltl: true, label: 'FedEx Freight',     url: FEDEX },
+  FXFW: { ltl: true, label: 'FedEx Freight',     url: FEDEX },
+  FXFC: { ltl: true, label: 'FedEx Freight',     url: FEDEX },
+  // No direct PRO link published — opens the carrier's tracking page; use the copy button
+  SCNN: { ltl: true, label: 'Schneider',         url: () => `https://schneider.com/`,   noDeepLink: true },
+  DYLT: { ltl: true, label: 'Daylight',          url: () => `https://www.dylt.com/`,    noDeepLink: true },
+  OAKH: { ltl: true, label: 'Oak Harbor',        url: () => `https://www.oakh.com/`,    noDeepLink: true },
+  DAYR: { ltl: true, label: 'Day & Ross',        url: () => `https://dayross.com/`,     noDeepLink: true },
+  DNRI: { ltl: true, label: 'Day & Ross',        url: () => `https://dayross.com/`,     noDeepLink: true },
+
+  // ── Known codes with no public tracking (shown as plain text) ──
+  PKUP:  { label: 'Customer Pickup' },
+  PKCA:  { label: 'Customer Pickup' },
+  PIKUP: { label: 'Customer Pickup' },
+  NFTG:  { label: 'Target Pickup' },
+  COLL:  { label: 'Customer Collection' },
+  WALM:  { label: 'Walmart Fleet' },
+  ACHW:  { label: 'Ace Fleet' },
+  AMZX:  { label: 'Amazon Freight' },
+  AZNG:  { label: 'Amazon Freight' },
 };
-// Fallback: guess carrier from the tracking number itself
+
+// Full carrier code list (Vendor code + SCAC → carrier name) from scac_codes 10.28.26.xlsx.
+// Codes without a tracking link above still show the carrier's name.
+const CARRIER_NAMES = {"BDDC":"Birddog Logistics, LLC","CLNC":"Circle Logistics, Inc - Asset","CLIM":"Circle Logistics, Inc - Broker","FCLC":"Fulmer, Carroll & Co","LDIM":"Lt Delivery, Inc","RVTS":"Riverside Transportation, Inc","WLIH":"Waller Logistics, Inc","FLCX":"1ST Leading Cargo Express Inc","PYLE":"A Duie Pyle, Inc","WEIG":"A J Weigand","APEP":"A Plus Expediting & Logistics Inc.","AACT":"AAA Cooper Transportation","ARCB":"ABF Freight","ABFS":"ABF Freight System","ABXX":"Abx Logistics","AWWL":"Accela Worldwide Logistics","AWWO":"Accela Worldwide Solutions Inc","EXSR":"Accela Worldwide Solutions Inc","ACEH":"Ace Doran Hauling & Rigging Co","ACHW":"Ace Fleet","ACXS":"Action Express","AMMF":"Admiral-Merchants Motor Freight Inc","AERX":"Aero International","AFNW":"AFN LLC","AUFS":"AFS Logistics LLC","AGMP":"AGM Transport","AOSX":"Air & Ocean Shipping Inc","DHLG":"Air Express International USA, Inc","AIRX":"Airborne Express","AILT":"Airland Transport","PXA":"Aldermore Bank Plc","AMQI":"All Modes Inc","ADET":"All Modes Transport (intermodal)","APTX":"All Pro Transportation Inc","ASKG":"All State Transportation Of NYC Inc","ALLX":"All Trac Transportation","ALLC":"All Truck Transporation Co Inc","ANCF":"Alliance Air Freight","ASIV":"Alliance Shippers Inc","ANSH":"Alliance Shippers-Im","ASIK":"Alliance Shippers-Tl","AYLT":"Ally Logistics LLC","ALHF":"Aloha Freight Forwarders Inc","AMMB":"AM PM Delivery Inc","AZNG":"Amazon.com Services Inc","ACRL":"American Central Trans","AFFI":"American Fast Freight","APAC":"A-P-A Transport","APEH":"Apex Logistics Group","AXME":"Apex Motor Express Limited","APDD":"APL Logistics","APPL":"Apple Courier","AEXX":"Argents Express","ASGN":"Aries Global Logistics","ARMN":"Arm Transportation","ANTT":"Arnold Transportation Services","ARVY":"Arrive Logistics","AWLV":"Arrow Lines Services Inc","AVRT":"Averitt Express","AXLL":"Axel Logistics","BICX":"B I C Line","BNFT":"B&F Trucking","BGXI":"Badger Express LLC","BXGL":"Bax Global","BCRX":"Bcr Freight (usa) Inc","BOPT":"Bdp International, Inc","BEAV":"Beaver Express","BDMS":"Bedford Motor Service Inc","BKTW":"Bemak Traffic Services Inc","BGME":"Bennett Motor Express","BTNB":"Benton Express","BNAI":"Bertschi North America Inc.","BESL":"Besl Transfer Co","BEST":"Best Courier","BTVP":"Best Overnite","BIOS":"Bison Transport","BJEX":"Bj Express Inc","BLKW":"Blackhawk Transport","BGCR":"Blue Cargo Group LLC","BSCE":"Blue Sky Couriers","BNLS":"BNSF Logistics","BNFA":"BNSF Logistics International Inc","BNSF":"BNSF Railway Co","BNXD":"Bnx Shipping Inc","SEYL":"Boncosky/seyller","BEXP":"Border Express","BRIL":"Brandt Truck Line Inc","BKLO":"Breck Logistics Inc","TWOL":"Bright View Intl Express Co Ltd","BRTC":"Brown Transfer Co","BRJF":"Brown Trucking Co","BTGD":"Bullet Trucking Inc","BSKE":"Buske Lines Inc","CSLO":"C & S Logistics","RBTW":"C H Robinson Worldwide","CDAM":"C.a.t. Global Corp","CHSL":"C.h. Robinson International, Inc","CLXE":"Calex ISCS","CNAE":"Canal Carriers LLC","CARB":"Carboline Co","CCNI":"Cardinal Freight","CRDT":"Cardinal Transport, Inc","CGOR":"Cargo Transporters","CATX":"Caribbean Transportations","CCSI":"Carrier Credit Services, Inc.","CTTL":"CCT Logistics","CEQT":"CEI Transport Inc","CDNK":"Celadon Trucking","CELC":"Celtic International LLC","CENF":"Central Freight Lines","CSAC":"Central States Trucking Co","CTII":"Central Transport","CTRA":"Central Transport","CEVAF":"CEVA Freight (uk) Ltd","CEVA":"CEVA Freight (uk) Ltd","MAIT":"CEVA International Inc","CMFH":"Challenger Motor Freight Inc","CKLO":"Checker Logistics","CFAA":"Cheema Freightlines LLC","CHBD":"Chemlogix - LLC","CSEQ":"Chicago Suburban Express","CLQE":"Chicagoland Quad Cities Express","CEEG":"Circle 8 Logistics","CDSE":"Circle International Inc","CITX":"City Wide Transportation Co","CLBT":"Clark Bros Inc","CLSX":"Class Courier Messenger Co","CMDU":"CMA CGM (america) LLC","CODO":"Codotrans Inc","COTR":"Codotrans Remit To","CMMS":"Command Logistics","CMDL":"Command Transportation-Dedicated","CSGX":"Commercial Services Group Inc","CCXG":"Con Way Guaranteed","CFFO":"Consolidated Fastfrate Inc","CFWY":"Consolidated Freightways","CCGY":"Continental Courier Inc.","CTRQ":"Con-Way Truckoad Inc","CKCE":"Cookson Carriers Corporation","COHM":"Cornhusker Motor Lines","COUN1":"Countrywide Freight Group","COUN":"Countrywide Freight Group","CVEN":"Covenant Transport","CWAW":"Cowan Logistics LLC","CXTQ":"Cox Transfer Inc","CLLQ":"Coyote Logistics LLC","ENGQ":"Cr England Inc","CNRV":"Crane Cartage LLC","CRNT":"Crescent Truck Lines Inc","CRCR":"Crete Carrier","CCYQ":"Cross Country Courier","CDSQ":"Crossdock Systems Inc","CYLI":"Crowley Land Transportation","CRST":"Crst Logistics","CHKM":"CTL USA Inc","AVEL":"CTS Advantage Logistics","CITV":"CTS Logistics USA LLC NYC","COLL":"Customer Collection","PKUP":"Customer Pickup","CEFV":"CW Carriers","CWLO":"CW Logistics","CHEJ":"CX Roberson Inc","CXIT":"CXI Trucking","CCSC":"Cycas LLC","CYDP":"Cycle Logistics","BOMN":"D M Bowman Inc","DATH":"Dalor Logistics, Inc","DNMR":"Dancor Transit, Inc","HDTI":"Danny Herman Trucking Inc","DNZX":"Danzas Corp","NFIL":"Dap Inc. C/o  Attn: Fb & A","DART":"Dart","ADTS":"Dart Advantage Logistics","DAVI2":"Davies Turner & Co Ltd","DAVI":"Davies Turner & Co Ltd","DAWI":"Dawes Transport","DAYR":"Day & Ross Inc","DNRI":"Day & Ross Inc.","DYLT":"Daylight Transport","DAFG":"Dayton Freight Lines","DDIV":"Ddi Transportation","DETR":"Deboer Transportation Inc","DDOG":"Dedicated Logistics Inc","DCLH":"Dedicated Logistics Services LLC","DPHE":"Dependable Highway Express","DPHT":"Dependable Highway Express Inc","DEPO":"Dependon Inc","DEPSA":"Depsa","DEPS":"Depsa","DEVER":"Devereux Developments Ltd","DEVE":"Devereux Developments Ltd","DHXI":"DGX Dependable Global Exp","DZNA":"DHL Global Forwarding","DHL":"DHL International (uk) Ltd","DFDO":"Diamond Freight Dist. Co, Inc.","DICM":"Dicom Express Courier","DTIC":"Dino's Logistics","DCLK":"Direct Connect Logistics","DF":"Direct Freight","DIVE":"Diversified Transportation Services","DMXT":"DMX Transportation Inc","DHRN":"Dohrn Transfer Company","DTNR":"Dot Transportation Inc","DPD":"DPD Belgium","DSVF":"DSV Air & Sea Inc.","DFDS":"DSV Ltd","DUBL":"Dugan Truck Line LLC","DPVL":"Duplainville Transport Inc","EDSX":"Eagle Delivery Service Inc","ECHS":"Echo Global Logistics","ECKI":"Ecklund Logistics Inc","ECMT":"ECM Transport , LLC","EDGF":"Edge Logistics","ZSSN":"Edi Ssn Partner","EENV":"E-Environmental Solutions LLC","EJRL":"EJR Logistics Inc","EMBAS":"Embassy Freight Services","EMBA":"Embassy Freight Services","EPPO":"Employee Purchase Order","ENGL":"England Logistics","EVLQ":"Envoy Logistics","EPCE":"Epic Express","ESSY":"Essential Freight Systems","ESNL":"Estenson Logistics -Dcs","EXLA":"Estes Express Lines","EFWW":"Estes Forwarding Worldwide LLC","EXLB":"Estes Forwarding Worldwide LLC","EURO2":"Europa Worldwide Logistics Limited","EURO":"Europa Worldwide Logistics Limited","EVTW":"Evans Transportation Services, Inc.","EXSX":"Expedited Brokerage Inc","EXDF":"Expedited Freight Systems Inc","FED2":"Federal Express - 3 Days","FED1":"Federal Express - Next Day","FEDX":"Federal Express Corp (sm Parcels)","FDCC":"FedEx","FXNL":"FedEx  - FedEx Economy","FXFE":"FedEx - FedEx Priority","FDFF":"FedEx Custom Critical","FDE":"FedEx Ers","TNT":"FedEx Express UK Transportation","ARFW":"FedEx Freight East","FXFC":"FedEx Freight Services","FXFW":"FedEx Freight West","VIKN":"FedEx Freight West","FEGX":"FedEx Ground Inc - Use Scac Fdeg","FDEG":"FedEx Ground Inc (small Parcels)","FEDE1":"FedEx UK Ltd","FEDE":"FedEx UK Ltd","FDFA":"Fide Freight","FLSJ":"FLS Transportation Ltd","FFSA":"Fortigo Freight Services Inc","FOX":"Foxline Logistics Pty Ltd","FOXX":"Foxline Logistics Pty Ltd","FRAT":"Frate Holding","FBKI":"Freight Brokers Intl","FSIX":"Freight Solutions Int'l","FVAN":"Freightvana","FREE":"Fremont Express","FNTY":"Furniture Transportation Systems","GMEX":"G M Express Inc","GPTC":"G&P Trucking","GFFI":"Gale Freight Forwarding Inc","GPFD":"Gap Forwarding","GATI":"Gardner Trucking Inc","GWFS":"Gateway Freight Systems Inc","GDSD":"GDS Express Inc","GEOT":"Geodis USA LLC","GEPX":"GEP International","GLEN1":"Glendale Transport UK Ltd","GLEN":"Glendale Transport UK Ltd","GLXS":"Glxs","GTTI":"Go To Transport","GLDF":"Gold Coast Freight","GCHL":"Gordon Trucking","GORK":"Gordon Trucking Inc","GRAF":"Graf Air Freight","GRNL":"Grane Transpotation","GNIT":"Granite Transportation","GDTW":"Greatwide Dedicated","GRRM":"Greentree Transportation Co","GFLE":"Ground Force Ina","GULI":"Gully Transportation Inc","XPOSU":"GXO Logistics UK Limited","XPOS":"GXO Logistics UK Limited","HVHI":"H V H Trans.","HSNM":"H&M Trucking Inc","HARBO":"Harbour International Freight Ltd","HARB":"Harbour International Freight Ltd","HMAD":"Hardin Delivery Inc","HRTE":"Hartley Transportation","HAXS":"Hassett Express, LLC","HSXF":"Hawaiian Express Service Inc","HZHS":"Hazels Hot Shot","HAEI":"Heartland Express Svcs Inc","HLXL":"Helix Logistics LLC","HNRT":"Hendrickson Trucking Inc","HNIF":"Heniff Transportation Systems LLC","HRMN":"Hermann Transportation","JTRE":"Hermann Transportation","HEYL":"Heyl Truck Lines Inc","HYTT":"Highway Transport Logistics Inc","WOLH":"Ho Wolding Inc","HWDQ":"Hollywood Delivery Service Inc","HLFS":"Honolulu Freight SVC","HOYU":"Hoyer Global USA Inc","HCMD":"Hub Group","HUBG":"Hub Group","XHLE":"Hub Group","XHLM":"Hub Group","HBGI":"Hub Group Inc","HTSL":"Hyndman Transport Limited","HDMU":"Hyundai America Shipping DBA HMM Co","ITFX":"IDA Tran Freight System","INNL":"Innovative Logistics SVC","INTD":"Interstate Distributor Co","ITWF":"Interworld Freight","ZFRT":"ISG Transportation","ISGT":"ISG Transportation Inc","JAWN":"J A Trucking, Inc.","HJBI":"J B Hunt - Intermodal","HJBT":"J B Hunt - Truckload","HJBA":"J B Hunt Transportation (amazon)","JAFI":"Ja Frate, Inc.","JJKQ":"Jack Jones Trucking","HJCS":"JB Hunt","XJLW":"JB Hunt % Central Transport","HJBO":"JB Hunt Transport Inc","QPMT":"JB Hunt Transport Intermodal","JBCP":"JBC Transport","JLLM":"JDI Logistics","JLMM":"JDL Logistics","JEKX":"Jeka Transport Inc","JEVC":"Jevic Transportation Co","JIGC":"JIT USA Logistics Corp","JNJR":"JNJ Logistics","CJSF":"John S Connor","BQTA":"Jones Shipley Express","JSE":"JSE Transport","JNLB":"JSX North, LLC","KNRQ":"K & R Express Systems","KAGL":"KAG Logistics","KAIA":"Kaiser Logistics Inc","KAIP":"Kaiser Transport Inc.","KIGE":"Kings Express","KWEO":"Kintetsu World Express (usa) Inc","KSWA":"Kiswani National","KKWQ":"KKW Trucking Inc","KCIQ":"KL Chempak Inc","KNBK":"Knight Brokerage","KNIG":"Knight Transportation Inc","KRUI":"Kruepke Trucking Inc","KUTR":"Kutzler Express Inc","LMOT":"L M O Transportation Services","LREC":"Land Air Express","LAXV":"Land-Air Express Ne","LEAM":"Landstar Express","LIGS":"Landstar Ligon","LRGR":"Landstar Ranger","LTRC":"Langer Transport Corp","LDVY":"Lanter Delivery Systems","LSPI":"Lazer Logistics","LEGS":"Legend Transportation","LNUS":"Leman USA","LEON":"Leon Vincent Overseas","LEQO":"Leonards Express Inc","LEQQ":"Leonards Express Inc","LIBN":"Liberty Transport","LKAM":"Link American Tranportation","LXCO":"Linkex","LLWL":"Lipsey Logistics","LQTX":"Liquid Transport Corp","LKVL":"LME Inc","LMEL":"LME Inc","LGXT":"Logix Transportation","DHLX":"Loomis Express","LSXX":"LSX Delivery LLC","LTIA":"Lynden Transport","LYAF":"Lynden Transport","LYSI":"Lynnco Supply Chain Solutions","MABE":"Mabe Trucking","MDJI":"Macer Delivery Service Inc","MAZK":"Maczuk Industries Inc.","MAEU":"Maersk Line","MAGX":"Magic Transport Inc","MFRC":"Main Freight","MIHD":"Mainfreight Inc","MKOD":"Manko Delivery Sys Inc","MANX":"Manx Independant Carriers","MXRS":"Marine Express","MTRM":"Maritime Ontario Freightworks","MKET":"Market Transport Ltd","MTEN":"Marten Transport Ltd","MRXW":"Martins Refrigerated Express Inc","MFER":"Master Transfer, Co, Inc","MXGC":"Max IGL Inc. DBA Max Cargo","MAXX":"Maximum Freight Systems Inc","MTNK":"Mc Tank Transport Inc","MCAY":"Mcnay Truck Line","MSLV":"Mesilla Valley Transportation","MTRK":"Metropolitan Trucking Inc","MSPS":"Mid South Transport Inc","MDCR":"Midland Courier","MDLD":"Midland Transport","MDEB":"Midnite Express Inc","MWCT":"Midwest Coast Logistics","MIDW":"Midwest Motor Express","MLXP":"Milan Express Inc","MILNE":"Milne & Craighead","MILN":"Milne & Craighead","MMDT":"Modern Master Deliveery Truck","MOLU":"MOL (america) Inc","MOLY":"Molo Solutions, LLC","MONC":"Monroe Transportation Services Inc","MTJG":"Moran Transportation Corporation","MGXN":"Morgan Express","MOTD":"Morris Transportation Inc","MOIN":"Motion Industries","MTRG":"Motor Cargo","MRS2":"Mrs Trucking","MSCU":"MSC Mediterranean Shipping Company","MUIR":"Muirs Transport","NMTF":"N & M Transfer","NCDH":"National Cold Chain Inc","NFFI":"National Fastfreight Inc","NATO":"National Oilwell","NATX":"Nationex Ac# 158555","NEILL":"Neill & Brown Shipping Ltd","NEIL":"Neill & Brown Shipping Ltd","NCTA":"New Century Transportation Inc","NEMF":"New England Motor Freight","NIMG":"New Image Painting","NPME":"New Penn Motor Express","NYCI":"New York Carolina Express","NXTD":"Next Day","NDAM":"Next Day AM","NB11":"Next Day Before 10.30AM","NB09":"Next Day Before 9.00AM","NXDD":"Next Day Delivery","DYXW":"Next Day Dynamex Ildc","NAFT":"NFI","NFIA":"NFI Industries","NICHO":"Nicholsons Transport Ltd","NICH":"Nicholsons Transport Ltd","NIKK":"Nikos Transport & Storage Inc","NIST":"Nistevo","NISTEVO":"Nistevo","NNRX":"NNR Aircargo Service (usa) Inc","NCLB":"North Coast Logistics Inc","LAEA":"North East Freightways","NOPK":"North Park Trans","UNKN":"Not Specified","NUST":"Nussbaum Trans. Services, Inc","NLAT":"NYK Logistics Americas/gst Div","OIXI":"O I X","OAKH":"Oak Harbor Freight Lines","OERT":"OEC Group Los Angeles,inc","ODFL":"Old Dominion Freight Line","OMTM":"On Time Trucking","ONEFLO":"Oneflo","ONEF":"Oneflo","ORXE":"Orscheln Transportation","PWTW":"Pacific Western Trans Inc","PACX":"Pack Air Inc","PKDS":"Packard Transport Inc","PSAT":"Palmetto State Transportation LLC","PANA":"Panama Transfer","PAPT":"Paper Transport","PAQK":"Par Trucking, Inc.","PASC":"Paschall Truck Lines Inc","PFEG":"Performance Freight Systems","PMNI":"Perimeter International","PTCQ":"Perimeter Transportation","PESF":"PFS Expedited Services Inc","PIKUP":"Pickup","PIKU":"Pickup","PLGR":"Pilgrim Consolidators Inc","PILX":"Pilot Air","PAAF":"Pilot Air Freight Corp","PNKA":"Pinnacle Freight Systems","PFAF":"Pinnacle Freight Systems Inc","PITD":"Pitt Ohio Express Inc","PKTX":"Plasti-Kote Truck Leasing","PSRW":"Pleasant Prairie Transport DBA PPT","PNCT":"Port Newark Container Terminal LLC","PRQK":"Prairie Transportation Inc","PTXX":"Prairie Transportation Inc","SPEE1":"Puro Ventures T/a Speedy Freight","SPEE":"Puro Ventures T/a Speedy Freight","PRLC":"Purolator Courier Ltd","QCAI":"Q Carriers Inc","QLYD":"Quality Carriers Inc","FCHG":"Quantix Liquid Transportation Inc.","QXTI":"Quik X","RLCA":"R & L Carriers Inc","RNLO":"R & L Carriers Inc","RLKS":"R & L Truckload Services LLC","RLFV":"R&L Carriers","RACP":"RAC Transport","ABLE1":"Rbs Invoice Finance","ABLE":"Rbs Invoice Finance","RBEE":"RBX Transportation","RDFG":"RDF Logistics Inc","RDXQ":"RDX Brokerage, LLC","ROIX":"Red Oak Logistics Inc","REDWOOD":"Redwood","TSGN":"Transportation Solutions Group LLC","RILA":"Reilly International Inc","REPX":"Republic Cargo Systems","RIMH":"Rim Logistics Ltd","RSIF":"Rist Transport","RJWE":"RJW Transport Inc","RDFS":"Roadrunner Freight System","RCKS":"Rock Transfer And Storage Inc","ROEV":"Roehl Transport","RLXX":"Rohde & Liesenfeld Inc","RONA":"Rona Truck","RSDL":"Rosedale Transport Inc","RTAL":"Rosedale Trnsprt 905-670-0057","DLWI":"Rr Donnelley Logistcs SVC Wrldwdinc","RTTE":"RT&T Logistics Inc","RUKT":"Rukert Terminals Corp","RUSH":"Rush Freight Global","AU_DEFAULT":"Rust-Oleum Australia","ROAU":"Rust-Oleum Australia","PKCA":"Rust-Oleum Corp","MVAN":"Rust-Oleum Vh/pp Mailvan","SSBB":"S & S Brokerage Inc","SDLC":"Saddle Creek","SAIA":"Saia Motor Freight Line","SAIB":"Saia Motor Freight Line","SDCR":"Sameday Worldwide","SDAM":"Saturday AM","SCQH":"Scanwell Logistics (lax) Inc.","SHKK":"Schenker Inc","SIFF":"Schenker Incorporated","SCDS":"Schneider Intermodal (rail)","SNCY":"Schneider National Carriers Inc","SCNN":"Schneider National Inc","SNBO":"Schneider National Inc","SEAB":"Sea Ber Transit","SFXX":"Sea Freight Inc","AAGP":"Sea Shipping Line","SEAL":"Sealane Freight Ltd","SWOE":"Seko Worldwide, LLC","SXCI":"Senderex Cargo","SRVP":"Service Transport","SWHL":"Seven Wheels","7WHL":"Seven Wheels","SFCP":"SFS Cargo Express Inc","SFQS":"Sharp Freight Systems Inc","SHPH":"Shipley Transport","SAXW":"Shipnorthamerica Network Inc.","SPPD":"Shipper Prepaid Carrier Of Choice","SMBK":"Simbeck Inc","SIMP1":"Simpson Logistics Ltd","SIMP":"Simpson Logistics Ltd","SINX":"Sinclair Cartage Inc","SJSH":"SJS Inc","SYKL":"Skyline Freight","SKYX":"Skytruck Air Sea Transport Inc","SMTA":"Smith Transport","SOMA":"Somatrans Rouen Depot 2","SNWS":"Soniq LTL","SOFF":"Sooner Freight Forwarders","SEFL":"Southeastern Freight Lines","SMTL":"Southwestern Motor","SPYE":"Space City Services","SPAJ":"Span Alaska Transportation","SPLB":"Spcl Lgstcs LTL","SLLN":"Special Logistics","SPED":"Spee Dee Delivery Service Inc","SDED":"Speedee Del SVC","STAD2":"Stadium Couriers Ltd","STAD":"Stadium Couriers Ltd","KSTS":"Stan Koch & Sons Trucking","STAN":"Stan Robinson Ltd","STDC":"Standard Carriage","STDF":"Standard Forwarding LLC","SDAT":"Star Transport Inc","SLSG":"Star Transportation","STAT":"Stat Logistics International Inc","SWDS":"Statewide Transportation","SLPD":"St-Lambert","STZW":"Stolt-Nielsen USA Inc","STVG":"Strive Logistics LLC","SUMB":"Summit Transportataion Services","SUIF":"Sunrise Transfer Inc","SUNX":"Sunrise Transfer Inc","SUSE":"Super Service","SUPX":"Superior Carriers Inc","SROF":"Supersonic Of Florida","STRC":"Sure Track Courier Ltd","SURE":"Surefreight Ltd","SUON":"Sutton Transport Inc","SWIFT":"Swift Transport","SWFT":"Swift Transportation Co Inc","BTHQ":"T A Baer Logistics LLC","SGLQ":"T.g. Stegall","TGIL":"Taggart International Ltd","TAM":"Tamex Transport","NFTG":"Target","TAXA":"Tax-Air","TFFO":"Tazmanian Freight","TCSF":"Tcsi-Transland","TEAL":"Teals Express","TXRS":"Tex Express","TFIN":"TFORCE Freight, Inc","EINA":"TFORCE Logistics Shuttle","RYTH":"TH Ryan Cartage Co","AEPD":"The Action Logistics Group","BLXY":"The Block Logistics, Inc","TIGL":"Tiger Lines LLC","TGXL":"Tiger Logistics LLC","TQYL":"Total Quality Logistics","TTMS":"Total Transportation  Of MS","TOWE":"Towne Air Frt","TRAF":"Trafertir Int. Transport Ltd","TFCH":"Traffic Tech","TRTX":"Traffic Tech","TFXE":"Traffix Ontario Limited","TAMI":"Transam Trucking Inc","TRCR":"Transcorr","TFEN":"Transgroup International","TSNE":"Transnat Express Inc","TSPF":"Transplace Canada Ltd","TTST":"Transplace Canada Ltd","TMXY":"Transplace Mexico, LLC","TPQL":"Transplace-Us","TCAM":"Transport America","TSBC":"Transport Distribution Co","TRRB":"Transport Robert (1973) LTEE","TRAM":"Transport Service Co","TRAP":"Transport Service Co","TXQS":"Transportation Logistics Systems-Br","TXOK":"Transportation One LLC","TKTK":"Transtek LTL","TRWE":"Transwestern Express Ltd.","TRWX":"Transwood Inc","TNXL":"Transx Ltd","TRZX":"Tranzact Systems","TRIX":"Tri Star Freight","TIMN":"Trimac Transportation Inc","TSLO":"Tristate Logistics","TRPX":"Tropical Shipping","TFYI":"Trucks For You Inc","TSVY":"Truserv Logistics Company","OVLD":"TST Overland Express","TSTM":"TST Overland Express","TGHE":"TTS Logistics","TTPG":"Turner Transportation Group, Inc","TWLOGISTIC":"Twlogistic","TWLO":"Twlogistic","UBER":"Uber Freight LLC","UNIS":"Unis Transportation","UPTL":"United Parcel Truckload","UNIK":"United Transport Tankcontainers Inc","ULSV":"Universal Logictics Services","UNTOR":"Unknown","UNTO":"Unknown","UGL":"Unsworth Global Logistics","UGL1":"Unsworth Global Logistics","UPS2":"UPS 2ND Day - MM","UPS3":"UPS 3RD Day - All Locations","UPSX":"Ups- All Locations","UPSCA":"UPS Canada Ltd","UPSN":"UPS Next Day - Early AM","OVNT":"UPS Global Freight Services","UPS":"UPS Ltd","UPTS":"UPS Truckload Brokerage Services","UPSH":"Upsh - 2 Day All Locations","USXI":"US Xpress","UCRT":"USA Cartage","USGL":"USA Global Logistics","USIT":"USA Truck Inc","USMM":"USA Truck Intermodal","HMES":"USF Holland","USFH":"USF Holland Inc","RETL":"USF Reddaway","USFX":"USF Worldwide","TNBW":"Usf/bestway Transportation","USHR":"Usher Transport","USPX":"Usps- Hasler","VALC":"Valley Cartage And Warehousing","VANK":"Van Wyk Freight Lines-Collect Only","TVA":"Vanguard Trucking","VECR":"Vector Transportation","VPTD":"Vellex Pty Ltd","VNDR":"Vendor Specific Carrier - Ppd","VRJT":"Veriha Trucking, Inc","VKDI":"Vickers Distribution","VTUI":"Vision Transportation Inc","VTSI":"Vision Transportation Systems Inc","VPLN":"Visual Pak Logistics LLC","VTRN":"Vitran","VOLP":"Volpe Express","VPLC":"Vp Xpress","WCXI":"W C Transport Inc","BOWK":"W H Bowker","WHTM":"W H Transportation","WLOG":"Waller Truck Company","WARD":"Ward Trucking","WNTT":"Warren Transport","WWAT":"Watkins Motor Lines Inc","WKSH":"Watkins Shepard Trucking","WENL":"Werner Enterprises","WENP":"Werner Enterprises","WEBE":"West Bend Transit And Svce Co","WSWI":"West Wisconsin Transport","WSTN":"Western Canada Express","WCNE":"Western Canada Express Inc","WEDX":"Western Express Delivery LLC","WSXI":"Western Express Inc","WSGS":"Westside Transport Co","WMCC":"Wheel Msm Transport","WLHS":"White Lightning Transportation","WPLL":"Wicker Park Logistics LLC","WTVA":"Wilson Trucking Corp","WINC":"Wincanton","WIPG":"Wisc Paper","WGBA":"Woodland Global","WOOD":"Woodland Global","CNWY":"XPO Logistics Freight Inc","XPOL":"XPO Logistics Inc.","XPRS":"Xpress Trucking","YCSI":"Yellow Global LLC","RDWY":"YRC Freight","YUSX":"Yusen Logistics (americas) Inc","SXAC":"Zenderex Cargp"};
+const VENDOR_SCAC   = {"BDDC":"BDDC","CLNC":"CLNC","CLIM":"CLIM","FCLC":"FCLC","LDIM":"LDIM","RVTS":"RVTS","WLIH":"WLIH","FLCX":"FLCX","PYLE":"PYLE","WEIG":"WEIG","APEP":"APEP","AACT":"AACT","ARCB":"ARCB","ABFS":"ABFS","ABXX":"ABXX","AWWL":"AWWL","AWWO":"AWWO","EXSR":"EXSR","ACEH":"ACEH","ACHW":"ACHW","ACXS":"ACXS","AMMF":"AMMF","AERX":"AERX","AFNW":"AFNW","AUFS":"AUFS","AGMP":"AGMP","AOSX":"AOSX","DHLG":"DHLG","AIRX":"AIRX","AILT":"AILT","PXA":"PXA","AMQI":"AMQI","ADET":"ADET","APTX":"APTX","ASKG":"ASKG","ALLX":"ALLX","ALLC":"ALLC","ANCF":"ANCF","ASIV":"ASIV","ANSH":"ANSH","ASIK":"ASIK","AYLT":"AYLT","ALHF":"ALHF","AMMB":"AMMB","AZNG":"AZNG","ACRL":"ACRL","AFFI":"AFFI","APAC":"APAC","APEH":"APEH","AXME":"AXME","APDD":"APDD","APPL":"APPL","AEXX":"AEXX","ASGN":"ASGN","ARMN":"ARMN","ANTT":"ANTT","ARVY":"ARVY","AWLV":"AWLV","AVRT":"AVRT","AXLL":"AXLL","BICX":"BICX","BNFT":"BNFT","BGXI":"BGXI","BXGL":"BXGL","BCRX":"BCRX","BOPT":"BOPT","BEAV":"BEAV","BDMS":"BDMS","BKTW":"BKTW","BGME":"BGME","BTNB":"BTNB","BNAI":"BNAI","BESL":"BESL","BEST":"BEST","BTVP":"BTVP","BIOS":"BIOS","BJEX":"BJEX","BLKW":"BLKW","BGCR":"BGCR","BSCE":"BSCE","BNLS":"BNLS","BNFA":"BNFA","BNSF":"BNSF","BNXD":"BNXD","SEYL":"SEYL","BEXP":"BEXP","BRIL":"BRIL","BKLO":"BKLO","TWOL":"TWOL","BRTC":"BRTC","BRJF":"BRJF","BTGD":"BTGD","BSKE":"BSKE","CSLO":"CSLO","RBTW":"RBTW","CDAM":"CDAM","CHSL":"CHSL","CLXE":"CLXE","CNAE":"CNAE","CARB":"CARB","CCNI":"CCNI","CRDT":"CRDT","CGOR":"CGOR","CATX":"CATX","CCSI":"CCSI","CTTL":"CTTL","CEQT":"CEQT","CDNK":"CDNK","CELC":"CELC","CENF":"CENF","CSAC":"CSAC","CTII":"CTII","CTRA":"CTRA","CEVAF":"CEVA","MAIT":"MAIT","CMFH":"CMFH","CKLO":"CKLO","CFAA":"CFAA","CHBD":"CHBD","CSEQ":"CSEQ","CLQE":"CLQE","CEEG":"CEEG","CDSE":"CDSE","CITX":"CITX","CLBT":"CLBT","CLSX":"CLSX","CMDU":"CMDU","CODO":"CODO","COTR":"COTR","CMMS":"CMMS","CMDL":"CMDL","CSGX":"CSGX","CCXG":"CCXG","CFFO":"CFFO","CFWY":"CFWY","CCGY":"CCGY","CTRQ":"CTRQ","CKCE":"CKCE","COHM":"COHM","COUN1":"COUN","CVEN":"CVEN","CWAW":"CWAW","CXTQ":"CXTQ","CLLQ":"CLLQ","ENGQ":"ENGQ","CNRV":"CNRV","CRNT":"CRNT","CRCR":"CRCR","CCYQ":"CCYQ","CDSQ":"CDSQ","CYLI":"CYLI","CRST":"CRST","CHKM":"CHKM","AVEL":"AVEL","CITV":"CITV","COLL":"COLL","PKUP":"PKUP","CEFV":"CEFV","CWLO":"CWLO","CHEJ":"CHEJ","CXIT":"CXIT","CCSC":"CCSC","CYDP":"CYDP","BOMN":"BOMN","DATH":"DATH","DNMR":"DNMR","HDTI":"HDTI","DNZX":"DNZX","NFIL":"NFIL","DART":"DART","ADTS":"ADTS","DAVI2":"DAVI","DAWI":"DAWI","DAYR":"DAYR","DNRI":"DNRI","DYLT":"DYLT","DAFG":"DAFG","DDIV":"DDIV","DETR":"DETR","DDOG":"DDOG","DCLH":"DCLH","DPHE":"DPHE","DPHT":"DPHT","DEPO":"DEPO","DEPSA":"DEPS","DEVER":"DEVE","DHXI":"DHXI","DZNA":"DZNA","DHL":"DHL","DFDO":"DFDO","DICM":"DICM","DTIC":"DTIC","DCLK":"DCLK","DF":"DF","DIVE":"DIVE","DMXT":"DMXT","DHRN":"DHRN","DTNR":"DTNR","DPD":"DPD","DSVF":"DSVF","DFDS":"DFDS","DUBL":"DUBL","DPVL":"DPVL","EDSX":"EDSX","ECHS":"ECHS","ECKI":"ECKI","ECMT":"ECMT","EDGF":"EDGF","ZSSN":"ZSSN","EENV":"EENV","EJRL":"EJRL","EMBAS":"EMBA","EPPO":"EPPO","ENGL":"ENGL","EVLQ":"EVLQ","EPCE":"EPCE","ESSY":"ESSY","ESNL":"ESNL","EXLA":"EXLA","EFWW":"EFWW","EXLB":"EXLB","EURO2":"EURO","EVTW":"EVTW","EXSX":"EXSX","EXDF":"EXDF","FED2":"FED2","FED1":"FED1","FEDX":"FEDX","FDCC":"FDCC","FXNL":"FXNL","FXFE":"FXFE","FDFF":"FDFF","FDE":"FDE","TNT":"TNT","ARFW":"FXFE","FXFC":"FXFC","FXFW":"FXFE","VIKN":"FXFW","FEGX":"FEGX","FDEG":"FDEG","FEDE1":"FEDE","FDFA":"FDFA","FLSJ":"FLSJ","FFSA":"FFSA","FOX":"FOXX","FRAT":"FRAT","FBKI":"FBKI","FSIX":"FSIX","FVAN":"FVAN","FREE":"FREE","FNTY":"FNTY","GMEX":"GMEX","GPTC":"GPTC","GFFI":"GFFI","GPFD":"GPFD","GATI":"GATI","GWFS":"GWFS","GDSD":"GDSD","GEOT":"GEOT","GEPX":"GEPX","GLEN1":"GLEN","GLXS":"GLXS","GTTI":"GTTI","GLDF":"GLDF","GCHL":"GCHL","GORK":"GORK","GRAF":"GRAF","GRNL":"GRNL","GNIT":"GNIT","GDTW":"GDTW","GRRM":"GRRM","GFLE":"GFLE","GULI":"GULI","XPOSU":"XPOS","HVHI":"HVHI","HSNM":"HSNM","HARBO":"HARB","HMAD":"HMAD","HRTE":"HRTE","HAXS":"HAXS","HSXF":"HSXF","HZHS":"HZHS","HAEI":"HAEI","HLXL":"HLXL","HNRT":"HNRT","HNIF":"HNIF","HRMN":"HRMN","JTRE":"JTRE","HEYL":"HEYL","HYTT":"HYTT","WOLH":"WOLH","HWDQ":"HWDQ","HLFS":"HLFS","HOYU":"HOYU","HCMD":"HCMD","HUBG":"HUBG","XHLE":"XHLE","XHLM":"XHLM","HBGI":"HBGI","HTSL":"HTSL","HDMU":"HDMU","ITFX":"ITFX","INNL":"INNL","INTD":"INTD","ITWF":"ITWF","ZFRT":"ZFRT","ISGT":"ISGT","JAWN":"JAWN","HJBI":"HJBI","HJBT":"HJBT","HJBA":"HJBA","JAFI":"JAFI","JJKQ":"JJKQ","HJCS":"HJCS","XJLW":"XJLW","HJBO":"HJBO","QPMT":"QPMT","JBCP":"JBCP","JLLM":"JLLM","JLMM":"JLMM","JEKX":"JEKX","JEVC":"JEVC","JIGC":"JIGC","JNJR":"JNJR","CJSF":"CJSF","BQTA":"BQTA","JSE":"JSE","JNLB":"JNLB","KNRQ":"KNRQ","KAGL":"KAGL","KAIA":"KAIA","KAIP":"KAIP","KIGE":"KIGE","KWEO":"KWEO","KSWA":"KSWA","KKWQ":"KKWQ","KCIQ":"KCIQ","KNBK":"KNBK","KNIG":"KNIG","KRUI":"KRUI","KUTR":"KUTR","LMOT":"LMOT","LREC":"LREC","LAXV":"LAXV","LEAM":"LEAM","LIGS":"LIGS","LRGR":"LRGR","LTRC":"LTRC","LDVY":"LDVY","LSPI":"LSPI","LEGS":"LEGS","LNUS":"LNUS","LEON":"LEON","LEQO":"LEQO","LEQQ":"LEQQ","LIBN":"LIBN","LKAM":"LKAM","LXCO":"LXCO","LLWL":"LLWL","LQTX":"LQTX","LKVL":"LKVL","LMEL":"LMEL","LGXT":"LGXT","DHLX":"DHLX","LSXX":"LSXX","LTIA":"LTIA","LYAF":"LYAF","LYSI":"LYSI","MABE":"MABE","MDJI":"MDJI","MAZK":"MAZK","MAEU":"MAEU","MAGX":"MAGX","MFRC":"MFRC","MIHD":"MIHD","MKOD":"MKOD","MANX":"MANX","MXRS":"MXRS","MTRM":"MTRM","MKET":"MKET","MTEN":"MTEN","MRXW":"MRXW","MFER":"MFER","MXGC":"MXGC","MAXX":"MAXX","MTNK":"MTNK","MCAY":"MCAY","MSLV":"MSLV","MTRK":"MTRK","MSPS":"MSPS","MDCR":"MDCR","MDLD":"MDLD","MDEB":"MDEB","MWCT":"MWCT","MIDW":"MIDW","MLXP":"MLXP","MILNE":"MILN","MMDT":"MMDT","MOLU":"MOLU","MOLY":"MOLY","MONC":"MONC","MTJG":"MTJG","MGXN":"MGXN","MOTD":"MOTD","MOIN":"MOIN","MTRG":"MTRG","MRS2":"MRS2","MSCU":"MSCU","MUIR":"MUIR","NMTF":"NMTF","NCDH":"NCDH","NFFI":"NFFI","NATO":"NATO","NATX":"NATX","NEILL":"NEIL","NCTA":"NCTA","NEMF":"NEMF","NIMG":"NIMG","NPME":"NPME","NYCI":"NYCI","NXTD":"NXTD","NDAM":"NDAM","NB11":"NB11","NB09":"NB09","NXDD":"NXDD","DYXW":"DYXW","NAFT":"NAFT","NFIA":"NFIA","NICHO":"NICH","NIKK":"NIKK","NIST":"NIST","NISTEVO":"NIST","NNRX":"NNRX","NCLB":"NCLB","LAEA":"LAEA","NOPK":"NOPK","UNKN":"UNKN","NUST":"NUST","NLAT":"NLAT","OIXI":"OIXI","OAKH":"OAKH","OERT":"OERT","ODFL":"ODFL","OMTM":"OMTM","ONEFLO":"ONEF","ORXE":"ORXE","PWTW":"PWTW","PACX":"PACX","PKDS":"PKDS","PSAT":"PSAT","PANA":"PANA","PAPT":"PAPT","PAQK":"PAQK","PASC":"PASC","PFEG":"PFEG","PMNI":"PMNI","PTCQ":"PTCQ","PESF":"PESF","PIKUP":"PIKU","PLGR":"PLGR","PILX":"PILX","PAAF":"PAAF","PNKA":"PNKA","PFAF":"PFAF","PITD":"PITD","PKTX":"PKTX","PSRW":"PSRW","PNCT":"PNCT","PRQK":"PRQK","PTXX":"PTXX","SPEE1":"SPEE","PRLC":"PRLC","QCAI":"QCAI","QLYD":"QLYD","FCHG":"FCHG","QXTI":"QXTI","RLCA":"RLCA","RNLO":"RNLO","RLKS":"RLKS","RLFV":"RLFV","RACP":"RACP","ABLE1":"ABLE","RBEE":"RBEE","RDFG":"RDFG","RDXQ":"RDXQ","ROIX":"ROIX","REDWOOD":"TSGN","RILA":"RILA","REPX":"REPX","RIMH":"RIMH","RSIF":"RSIF","RJWE":"RJWE","RDFS":"RDFS","RCKS":"RCKS","ROEV":"ROEV","RLXX":"RLXX","RONA":"RONA","RSDL":"RSDL","RTAL":"RTAL","DLWI":"DLWI","RTTE":"RTTE","RUKT":"RUKT","RUSH":"RUSH","AU_DEFAULT":"ROAU","PKCA":"PKCA","MVAN":"MVAN","SSBB":"SSBB","SDLC":"SDLC","SAIA":"SAIA","SAIB":"SAIB","SDCR":"SDCR","SDAM":"SDAM","SCQH":"SCQH","SHKK":"SHKK","SIFF":"SIFF","SCDS":"SCDS","SNCY":"SNCY","SCNN":"SCNN","SNBO":"SNBO","SEAB":"SEAB","SFXX":"SFXX","AAGP":"AAGP","SEAL":"SEAL","SWOE":"SWOE","SXCI":"SXCI","SRVP":"SRVP","SWHL":"7WHL","SFCP":"SFCP","SFQS":"SFQS","SHPH":"SHPH","SAXW":"SAXW","SPPD":"SPPD","SMBK":"SMBK","SIMP1":"SIMP","SINX":"SINX","SJSH":"SJSH","SYKL":"SYKL","SKYX":"SKYX","SMTA":"SMTA","SOMA":"SOMA","SNWS":"SNWS","SOFF":"SOFF","SEFL":"SEFL","SMTL":"SMTL","SPYE":"SPYE","SPAJ":"SPAJ","SPLB":"SPLB","SLLN":"SLLN","SPED":"SPED","SDED":"SDED","STAD2":"STAD","KSTS":"KSTS","STAN":"STAN","STDC":"STDC","STDF":"STDF","SDAT":"SDAT","SLSG":"SLSG","STAT":"STAT","SWDS":"SWDS","SLPD":"SLPD","STZW":"STZW","STVG":"STVG","SUMB":"SUMB","SUIF":"SUIF","SUNX":"SUNX","SUSE":"SUSE","SUPX":"SUPX","SROF":"SROF","STRC":"STRC","SURE":"SURE","SUON":"SUON","SWIFT":"SWFT","SWFT":"SWFT","BTHQ":"BTHQ","SGLQ":"SGLQ","TGIL":"TGIL","TAM":"TAM","NFTG":"PKUP","TAXA":"TAXA","TFFO":"TFFO","TCSF":"TCSF","TEAL":"TEAL","TXRS":"TXRS","TFIN":"TFIN","EINA":"EINA","RYTH":"RYTH","AEPD":"AEPD","BLXY":"BLXY","TIGL":"TIGL","TGXL":"TGXL","TQYL":"TQYL","TTMS":"TTMS","TOWE":"TOWE","TRAF":"TRAF","TFCH":"TFCH","TRTX":"TRTX","TFXE":"TFXE","TAMI":"TAMI","TRCR":"TRCR","TFEN":"TFEN","TSNE":"TSNE","TSPF":"TSPF","TTST":"TTST","TMXY":"TMXY","TPQL":"TPQL","TCAM":"TCAM","TSBC":"TSBC","TRRB":"TRRB","TRAM":"TRAM","TRAP":"TRAP","TXQS":"TXQS","TXOK":"TXOK","TSGN":"TSGN","TKTK":"TKTK","TRWE":"TRWE","TRWX":"TRWX","TNXL":"TNXL","TRZX":"TRZX","TRIX":"TRIX","TIMN":"TIMN","TSLO":"TSLO","TRPX":"TRPX","TFYI":"TFYI","TSVY":"TSVY","OVLD":"OVLD","TSTM":"TSTM","TGHE":"TGHE","TTPG":"TTPG","TWLOGISTIC":"TWLO","UBER":"UBER","UNIS":"UNIS","UPTL":"UPTL","UNIK":"UNIK","ULSV":"ULSV","UNTOR":"UNTO","UGL":"UGL","UGL1":"UGL1","UPS2":"UPS2","UPS3":"UPS3","UPSX":"UPSX","UPSCA":"UPSN","OVNT":"OVNT","UPS":"UPS","UPSN":"UPSN","UPTS":"UPTS","UPSH":"UPSH","USXI":"USXI","UCRT":"UCRT","USGL":"USGL","USIT":"USIT","USMM":"USMM","HMES":"HMES","USFH":"USFH","RETL":"RETL","USFX":"USFX","TNBW":"TNBW","USHR":"USHR","USPX":"USPX","VALC":"VALC","VANK":"VANK","TVA":"TVA","VECR":"VECR","VPTD":"VPTD","VNDR":"VNDR","VRJT":"VRJT","VKDI":"VKDI","VTUI":"VTUI","VTSI":"VTSI","VPLN":"VPLN","VTRN":"VTRN","VOLP":"VOLP","VPLC":"VPLC","WCXI":"WCXI","BOWK":"BOWK","WHTM":"WHTM","WLOG":"WLOG","WARD":"WARD","WNTT":"WNTT","WWAT":"WWAT","WKSH":"WKSH","WENL":"WENL","WENP":"WENP","WEBE":"WEBE","WSWI":"WSWI","WSTN":"WSTN","WCNE":"WCNE","WEDX":"WSTN","WSXI":"WSXI","WSGS":"WSGS","WMCC":"WMCC","WLHS":"WLHS","WPLL":"WPLL","WTVA":"WTVA","WINC":"WINC","WIPG":"WIPG","WGBA":"WGBA","WOOD":"WOOD","CNWY":"CNWY","XPOL":"XPOL","XPRS":"XPRS","YCSI":"YCSI","RDWY":"RDWY","YUSX":"YUSX","SXAC":"SXAC"};
+
+// Look up by the code in the report; if that's a vendor code, also try its SCAC
 function carrierInfo(code, track) {
   const c = (code || '').trim().toUpperCase();
-  if (CARRIER_MAP[c]) return CARRIER_MAP[c];
+  const name = CARRIER_NAMES[c] || '';
+  const hit = CARRIER_MAP[c] || CARRIER_MAP[VENDOR_SCAC[c]];
+  if (hit) return { cls: hit.ltl ? 'ltl' : 'other', url: null, ...hit, fullName: name };
+  if (name) return { label: name, url: null, cls: 'other', fullName: name };
   const t = (track || '').trim().toUpperCase();
-  if (c.startsWith('UPS') || t.startsWith('1Z')) return { label: c || 'UPS', url: UPS, cls: 'ups' };
-  if (c.startsWith('FD') || c.startsWith('FX') || /^\d{12}$|^\d{15}$/.test(t)) return { label: c || 'FedEx', url: FEDEX, cls: 'fedex' };
-  return { label: c || '—', url: () => '#', cls: 'other' };
+  if (!c && t.startsWith('1Z')) return { label: 'UPS', url: UPS, cls: 'ups' };
+  if (!c && /^\d{12}$|^\d{15}$/.test(t)) return { label: 'FedEx', url: FEDEX, cls: 'fedex' };
+  return { label: c || '—', url: null, cls: 'other' };
+}
+function copyPro(btn, pro) {
+  const done = () => { const o = btn.textContent; btn.textContent = '✓'; setTimeout(() => btn.textContent = o, 1200); };
+  try {
+    navigator.clipboard.writeText(pro).then(done, () => fallbackCopy(pro, done));
+  } catch (e) { fallbackCopy(pro, done); }
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta);
+  ta.select(); try { document.execCommand('copy'); done(); } catch (e) {} ta.remove();
 }
 
-// ── State ──
-let allData     = [];
-let filtered    = [];
-let search      = '';
-let custFilter  = '';
-let carrFilter  = '';
-let repFilter   = '';
-let stateFilter = '';
-let sortField   = 'cust_name';
-let sortDir     = 1;
-const textFields = new Set(['cust_name','shipto_name','po','sales_order','material','order_sort','ship_sort','track','carrier','freight','rep']);
-
+// ── Helpers ──
+const str = v => String(v ?? '').trim();
+const num = v => { const n = parseFloat(String(v ?? '').replace(/[,$]/g,'')); return isNaN(n) ? 0 : n; };
+const noZeros = v => str(v).replace(/^0+(?=.)/, '');
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
-function fmt(v) {
-  return '$' + v.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
-}
+function fmt(v) { return '$' + v.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 }); }
 function toDate(v) {
-  if (!v) return null;
+  if (v === null || v === undefined || v === '') return null;
   if (v instanceof Date) return isNaN(v) ? null : v;
   if (typeof v === 'number') { const d = XLSX.SSF.parse_date_code(v); return d ? new Date(d.y, d.m-1, d.d) : null; }
-  const d = new Date(v); return isNaN(d) ? null : d;
+  const s = str(v); if (!/\d/.test(s)) return null;
+  const d = new Date(s); return isNaN(d) ? null : d;
 }
 function fmtDate(d) {
-  if (!d) return '';
-  return [String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0'), d.getFullYear()].join('/');
+  return d ? [String(d.getMonth()+1).padStart(2,'0'), String(d.getDate()).padStart(2,'0'), d.getFullYear()].join('/') : '';
 }
-function sortKey(d) {
-  return d ? `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}` : '';
-}
-const str = v => String(v ?? '').trim();
-const num = v => { const n = parseFloat(String(v ?? '').replace(/,/g,'')); return isNaN(n) ? 0 : n; };
+const plural = (n, w) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
+const dkey = d => d ? d.getFullYear()*10000 + (d.getMonth()+1)*100 + d.getDate() : 0;
 
-// ── File loading ──
-function handleFile(file) {
-  if (!file) return;
-  const btn = document.getElementById('btn-parcel');
-  const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const ok = parseFile(e.target.result, file.name);
-      if (!ok) return;
-      btn.classList.add('loaded');
-      btn.querySelector('span').textContent = '✓';
-      document.getElementById('zoneNotice').style.display = 'none';
-    } catch (err) {
-      console.error(err);
-      showNotice('Could not read this file: ' + err.message);
-    }
-  };
-  reader.readAsArrayBuffer(file);
-}
-function loadParcelFile(input) { handleFile(input.files[0]); input.value = ''; }
-
-// ── Product descriptions (embedded list, see <script id="product-data"> below <head>) ──
-// The report's "Material Description" column is blank, so descriptions come from PRODUCTS.
-// SKUs ending in "S" (single/each versions) fall back to their base SKU's description.
+// Product descriptions: report's own Description first, else the embedded product list
 const normMat = m => str(m).toUpperCase().replace(/\s+/g, '').replace(/^0+(?=.)/, '');
-function lookupDesc(material) {
-  const k = normMat(material);
+function lookupDesc(sku) {
+  const k = normMat(sku);
   if (!k) return '';
   if (PRODUCTS[k]) return PRODUCTS[k];
   if (k.length > 1 && k.endsWith('S') && PRODUCTS[k.slice(0, -1)]) return PRODUCTS[k.slice(0, -1)];
   return '';
 }
 document.getElementById('prodSource').textContent =
-  `Product descriptions: ${Object.keys(PRODUCTS).length.toLocaleString()} SKUs · ${PRODUCTS_SOURCE}`;
-function applyDescriptions() {
-  allData.forEach(r => { r.desc = r.mat_desc || lookupDesc(r.material); });
-  if (allData.length) applyFilters();
+  `Built-in: ${Object.keys(PRODUCTS).length.toLocaleString()} product descriptions · ${Object.keys(CARRIER_NAMES).length.toLocaleString()} carrier codes`;
+
+// ── State ──
+let allLines = [];       // one per report line
+let filteredLines = [];
+let groups = [];
+const expanded = new Set();
+const F = { search: '', cust: '', carrier: '', state: '', plant: '', ref: '' };
+let sortField = 'ship', sortDir = -1;
+
+// ── Columns (group-level) ──
+const COLS = [
+  { key: 'ref',     label: 'PRO / Tracking #', type: 'text' },
+  { key: 'carrier', label: 'Carrier',          type: 'text' },
+  { key: 'soldto',  label: 'Sold-To',          type: 'text' },
+  { key: 'shipto',  label: 'Ship-To',          type: 'text' },
+  { key: 'order',   label: 'Order #',          type: 'text' },
+  { key: 'po',      label: 'PO #',             type: 'text' },
+  { key: 'delivery',label: 'Delivery',         type: 'text' },
+  { key: 'item',    label: 'Item / Description', type: 'text' },
+  { key: 'orderDt', label: 'Order Date',       type: 'num' },
+  { key: 'sched',   label: 'Scheduled',        type: 'num' },
+  { key: 'ship',    label: 'Actual Ship',      type: 'num' },
+  { key: 'delvDt',  label: 'Delivery Date',    type: 'num' },
+  { key: 'plant',   label: 'Plant',            type: 'text' },
+  { key: 'value',   label: 'Delv Value',       type: 'num', num: true },
+];
+function renderHeader() {
+  document.getElementById('headerRow').innerHTML =
+    `<th class="q-col" title="Select / unselect all shown shipments"><input type="checkbox" id="selAll" onclick="event.stopPropagation(); toggleQueueVisible(this.checked)"></th>` + COLS.map(c =>
+    `<th class="${c.num ? 'num' : ''} ${sortField === c.key ? 'sorted' : ''}" onclick="sortBy('${c.key}')">${c.label}` +
+    `<span class="sort-arrow">${sortField === c.key ? (sortDir === 1 ? '↑' : '↓') : ''}</span></th>`).join('');
 }
 
-// Find the sheet + header row that holds the report (looks for "Tracking Nbr")
-function findReport(wb) {
-  const order = ['Format', 'RawData', ...wb.SheetNames];
-  for (const name of [...new Set(order)]) {
-    const ws = wb.Sheets[name];
-    if (!ws) continue;
-    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
+// ── File loading ──
+function loadFile(input) { handleFile(input.files[0]); input.value = ''; }
+function handleFile(file) {
+  if (!file) return;
+  const ld = document.getElementById('loading'); ld.style.display = 'inline';
+  const reader = new FileReader();
+  reader.onload = e => {
+    setTimeout(() => {          // let "Reading file…" paint first on big files
+      try {
+        if (parseFile(e.target.result, file.name)) {
+          const btn = document.getElementById('btn-report');
+          btn.classList.add('loaded'); btn.querySelector('span').textContent = '✓';
+          document.getElementById('zoneNotice').style.display = 'none';
+        }
+      } catch (err) { console.error(err); showNotice('Could not read this file: ' + err.message); }
+      ld.style.display = 'none';
+    }, 30);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Find the sheet/header row; detect which report layout it is
+function findSheet(wb) {
+  for (const name of wb.SheetNames) {
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', raw: true });
     for (let i = 0; i < Math.min(aoa.length, 15); i++) {
       const row = aoa[i].map(h => str(h).toLowerCase());
-      if (row.includes('tracking nbr') && row.includes('delivery')) return { name, aoa, hdrIdx: i };
+      if (row.includes('pronumber') && row.includes('carrier')) return { aoa, hdrIdx: i, kind: 'combined' };
+      if (row.includes('tracking nbr') && row.includes('delivery')) return { aoa, hdrIdx: i, kind: 'doo' };
     }
   }
   return null;
 }
 
-function parseFile(arrayBuffer, fileName) {
-  const wb  = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
-  const rep = findReport(wb);
-  if (!rep) { showNotice('No "Tracking Nbr" column found — is this the Daily Open Orders report?'); return false; }
-
-  const hdr = rep.aoa[rep.hdrIdx].map(h => str(h).toLowerCase());
-  // Column lookup; nth = which occurrence (the report has two "Customer" columns: Sold-to, then Ship-to)
+function parseFile(buf, fileName) {
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+  const sh = findSheet(wb);
+  if (!sh) { showNotice('Couldn\'t find the report columns (Carrier / ProNumber, or Tracking Nbr) in this file.'); return false; }
+  const hdr = sh.aoa[sh.hdrIdx].map(h => str(h).toLowerCase());
   const col = (name, nth = 0) => {
     let seen = 0;
     for (let i = 0; i < hdr.length; i++) if (hdr[i] === name.toLowerCase()) { if (seen === nth) return i; seen++; }
     return -1;
   };
-  const C = {
-    delivery: col('Delivery'), delv: col('Delv Date'), seq: col('Seq'), track: col('Tracking Nbr'),
-    amount: col('Amount'), curr: col('Curr'),
-    soldto: col('Customer', 0) >= 0 ? col('Customer', 0) : col('Sold-to'), soldtoName: col('Sold-to Name'),
-    shipto: col('Customer', 1) >= 0 ? col('Customer', 1) : col('Ship-to'), shiptoName: col('Ship-to Name'),
-    street: col('Ship-to Street'), city: col('City'), state: col('State'), zip: col('Post Code'),
-    f1: col('Freight-1'), f2: col('Freight-2'), shipment: col('Shipment Number'),
-    shipDate: col('Ship Date'), so: col('SalesOrder'), orderDate: col('Order Date'),
-    po: col('Customer PO'), poDate: col('PO Date'), weight: col('Weight'), unit: col('Unit'),
-    trackDate: col('Track Date'), item: col('Delivery Item'), material: col('Material'),
-    matDesc: col('Material Description'), qty: col('Shipped Quantity'), qtyUnit: col('Shipped Units'),
-    shipType: col('Ship Type'), repId: col('Sales Employee'), rep: col('Sales Employee Name'),
-  };
-  const g = (r, k) => C[k] >= 0 ? r[C[k]] : '';
+  const get = (r, i) => i >= 0 ? r[i] : '';
+  const body = sh.aoa.slice(sh.hdrIdx + 1).filter(r => r.some(v => v !== '' && v !== null));
 
-  allData = rep.aoa.slice(rep.hdrIdx + 1).map(r => {
-    const unit   = str(g(r,'unit')).toUpperCase();
-    const wt     = num(g(r,'weight'));
-    const isKg   = unit.startsWith('KG');
-    const shipD  = toDate(g(r,'shipDate'));
-    const ordD   = toDate(g(r,'orderDate'));
-    const f2     = str(g(r,'f2')).replace(/\s+/g,' ');
-    return {
-      cust_name:   str(g(r,'soldtoName')),
-      cust_id:     str(g(r,'soldto')),
-      shipto_name: str(g(r,'shiptoName')),
-      shipto_id:   str(g(r,'shipto')),
-      street:      str(g(r,'street')),
-      city:        str(g(r,'city')),
-      state:       str(g(r,'state')),
-      zip:         str(g(r,'zip')),
-      po:          str(g(r,'po')),
-      sales_order: str(g(r,'so')),
-      delivery:    str(g(r,'delivery')),
-      shipment:    str(g(r,'shipment')),
-      seq:         parseInt(g(r,'seq')) || 1,
-      item:        str(g(r,'item')),
-      material:    str(g(r,'material')),
-      mat_desc:    str(g(r,'matDesc')),
-      qty:         num(g(r,'qty')),
-      qty_unit:    str(g(r,'qtyUnit')),
-      track:       str(g(r,'track')),
-      carrier:     str(g(r,'shipType')).toUpperCase(),
-      freight:     str(g(r,'f1')) + (f2 ? ' · ' + f2 : ''),
-      rep:         str(g(r,'rep')),
-      rep_id:      str(g(r,'repId')),
-      order_date:  fmtDate(ordD), order_sort: sortKey(ordD),
-      ship_date:   fmtDate(shipD), ship_sort:  sortKey(shipD), ship_obj: shipD,
-      delv_date:   fmtDate(toDate(g(r,'delv'))),
-      weight:      wt,
-      unit:        unit || 'LB',
-      weight_lb:   isKg ? wt * 2.20462 : wt,
-      amount:      num(g(r,'amount')),
-      curr:        str(g(r,'curr')).toUpperCase() || 'USD',
+  if (sh.kind === 'combined') {
+    // Yellow-highlighted columns only
+    const C = {
+      soldto: col('Sold-To'), soldtoName: col('Sold-To Name'), shipto: col('Ship-To'), shiptoName: col('Ship-To Name'),
+      street: col('Ship-To Street'), city: col('City'), state: col('State'), zip: col('Post Code'),
+      order: col('Order Nbr'), orderDt: col('Order Date'), po: col('PO Number'), delivery: col('Delivery'),
+      delvDt: col('Delivery Date'), sched: col('Scheduled'), ship: col('Actual Ship'), carrier: col('Carrier'),
+      pro: col('ProNumber'), shipment: col('Shipment (Tracking)'), sku: col('R-O SKU'), desc: col('Description'),
+      value: col('Delv Value'), plant: col('Plant'),
     };
-  }).filter(r => r.track);
-
-  if (!allData.length) { showNotice('The report loaded but had no rows with tracking numbers.'); return false; }
-
-  // Report date: from filename (YYYYMMDD) or else the latest Ship Date in the data
-  const m = (fileName || '').match(/(\d{4})(\d{2})(\d{2})/);
-  let label = '';
-  if (m) label = `${m[2]}/${m[3]}/${m[1]}`;
-  else {
-    const dates = allData.map(r => r.ship_obj).filter(Boolean);
-    if (dates.length) label = fmtDate(new Date(Math.max(...dates)));
+    allLines = body.map(r => makeLine({
+      soldto: get(r,C.soldto), soldtoName: get(r,C.soldtoName), shipto: get(r,C.shipto), shiptoName: get(r,C.shiptoName),
+      street: get(r,C.street), city: get(r,C.city), state: get(r,C.state), zip: get(r,C.zip),
+      order: get(r,C.order), orderDt: get(r,C.orderDt), po: get(r,C.po), delivery: get(r,C.delivery),
+      delvDt: get(r,C.delvDt), sched: get(r,C.sched), ship: get(r,C.ship), carrier: get(r,C.carrier),
+      pro: get(r,C.pro), shipment: get(r,C.shipment), sku: get(r,C.sku), desc: get(r,C.desc),
+      value: get(r,C.value), plant: get(r,C.plant),
+    }));
+  } else {
+    // Daily Open Orders layout (two "Customer" columns: Sold-to, then Ship-to)
+    const C = {
+      soldto: col('Customer', 0), soldtoName: col('Sold-to Name'), shipto: col('Customer', 1), shiptoName: col('Ship-to Name'),
+      street: col('Ship-to Street'), city: col('City'), state: col('State'), zip: col('Post Code'),
+      order: col('SalesOrder'), orderDt: col('Order Date'), po: col('Customer PO'), delivery: col('Delivery'),
+      delvDt: col('Delv Date'), ship: col('Ship Date'), carrier: col('Ship Type'), track: col('Tracking Nbr'),
+      shipment: col('Shipment Number'), sku: col('Material'), desc: col('Material Description'), value: col('Amount'),
+    };
+    allLines = body.map(r => makeLine({
+      soldto: get(r,C.soldto), soldtoName: get(r,C.soldtoName), shipto: get(r,C.shipto), shiptoName: get(r,C.shiptoName),
+      street: get(r,C.street), city: get(r,C.city), state: get(r,C.state), zip: get(r,C.zip),
+      order: get(r,C.order), orderDt: get(r,C.orderDt), po: get(r,C.po), delivery: get(r,C.delivery),
+      delvDt: get(r,C.delvDt), sched: '', ship: get(r,C.ship), carrier: get(r,C.carrier),
+      pro: get(r,C.track), shipment: get(r,C.shipment), sku: get(r,C.sku), desc: get(r,C.desc),
+      value: get(r,C.value), plant: '',
+    }));
   }
-  document.getElementById('reportDateDisplay').textContent = label ? `Ship date: ${label}` : '';
+  if (!allLines.length) { showNotice('The report loaded but had no data rows.'); return false; }
 
-  // Reset filters & populate dropdowns
-  search = custFilter = carrFilter = repFilter = stateFilter = '';
+  // Report date = latest Actual Ship date in the file
+  const latest = allLines.reduce((m, l) => Math.max(m, l.shipKey), 0);
+  document.getElementById('reportDateDisplay').innerHTML =
+    `${esc(fileName)}${latest ? `<br>Latest ship date: ${fmtDate(new Date(Math.floor(latest/10000), Math.floor(latest/100)%100 - 1, latest%100))}` : ''}`;
+
+  Object.keys(F).forEach(k => F[k] = '');
   expanded.clear();
   document.getElementById('searchInput').value = '';
-  fillSelect('repFilter',     'All sales reps', uniq('rep'));
-  fillSelect('custFilter',    'All customers',  uniq('cust_name'));
-  fillSelect('stateFilter',   'All states',     uniq('state'));
-  fillSelect('carrierFilter', 'All carriers',   uniq('carrier'), c => carrierInfo(c).label + ` (${c})`);
+  fillSelect('custFilter',    'All sold-to customers', uniq(l => l.soldtoName));
+  fillSelect('carrierFilter', 'All carriers', uniq(l => l.carrier), c => `${carrierInfo(c).label} (${c})`);
+  fillSelect('stateFilter',   'All states',   uniq(l => l.state));
+  fillSelect('plantFilter',   'All plants',   uniq(l => l.plant));
+  document.getElementById('refFilter').value = '';
 
   document.getElementById('emptyState').style.display = 'none';
   document.getElementById('tableArea').style.display  = '';
   document.getElementById('miniKpi').style.display    = '';
-  applyDescriptions();   // fills r.desc, then applyFilters()
+  renderHeader();
+  applyFilters();
   return true;
 }
 
-function uniq(field) { return [...new Set(allData.map(r => r[field]).filter(Boolean))].sort(); }
+// Build one normalized line; decide what it rolls up under
+function makeLine(o) {
+  const carrier = str(o.carrier).toUpperCase();
+  const ci = carrierInfo(carrier, o.pro);
+  const pro = str(o.pro), shipment = noZeros(o.shipment), delivery = noZeros(o.delivery);
+  const orderDt = toDate(o.orderDt), sched = toDate(o.sched), ship = toDate(o.ship), delvDt = toDate(o.delvDt);
+  const sku = noZeros(o.sku);
+  const desc = str(o.desc) || lookupDesc(sku);
+  const notShipped = !ship && (!/^\d+$/.test(delivery) || !carrier);
+  let refType, refKey;
+  if (pro)                 { refType = 'pro'; refKey = 'P|' + carrier + '|' + pro.replace(/\s+/g,''); }
+  else if (shipment)       { refType = 'shp'; refKey = 'S|' + shipment; }
+  else if (notShipped)     { refType = 'open'; refKey = 'O|' + noZeros(o.order) + '|' + delivery; }
+  else                     { refType = 'dlv'; refKey = 'D|' + (delivery || noZeros(o.order)); }
+  const l = {
+    soldto: noZeros(o.soldto), soldtoName: str(o.soldtoName),
+    shipto: noZeros(o.shipto), shiptoName: str(o.shiptoName),
+    street: str(o.street), city: str(o.city), state: str(o.state), zip: str(o.zip),
+    order: noZeros(o.order), po: str(o.po), delivery, shipment, pro,
+    orderDt, sched, ship, delvDt,
+    orderKey: dkey(orderDt), schedKey: dkey(sched), shipKey: dkey(ship), delvKey: dkey(delvDt),
+    carrier, carrierLabel: ci.label, carrierName: ci.fullName || ci.label,
+    sku, desc, value: num(o.value), plant: str(o.plant),
+    refType, refKey,
+  };
+  // Pre-built search text (lower case) for fast filtering
+  l.hay = [l.desc, l.sku, l.soldto, l.soldtoName, l.shipto, l.shiptoName, l.street, l.city, l.state, l.zip,
+           l.carrier, l.carrierLabel, l.carrierName, l.po, l.order, l.delivery, l.shipment, l.pro, l.plant]
+          .join(' \u0001 ').toLowerCase();
+  return l;
+}
+
+function uniq(fn) { return [...new Set(allLines.map(fn).filter(Boolean))].sort(); }
 function fillSelect(id, allLabel, values, labelFn) {
   document.getElementById(id).innerHTML = `<option value="">${allLabel}</option>`
     + values.map(v => `<option value="${esc(v)}">${esc(labelFn ? labelFn(v) : v)}</option>`).join('');
 }
 
-function renderMiniKpi(data) {
-  const totalWt = data.reduce((s,r)=>s+r.weight_lb, 0);
-  const byCur = {};
-  data.forEach(r => { byCur[r.curr] = (byCur[r.curr] || 0) + r.amount; });
-  const usd   = byCur.USD || 0;
-  const other = Object.entries(byCur).filter(([c,v]) => c !== 'USD' && v)
-                  .map(([c,v]) => `+ ${v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} ${c}`).join(' ');
-  const custs  = new Set(data.map(r=>r.cust_name)).size;
-  const orders = new Set(data.map(r=>r.sales_order)).size;
-  const shiptos= new Set(data.map(r=>r.shipto_id || r.shipto_name)).size;
-  const carriers = new Set(data.map(r=>carrierInfo(r.carrier, r.track).label)).size;
-  document.getElementById('miniKpi').innerHTML = `
-    <div class="mini-kpi-item"><div class="mk-label">Customers</div><div class="mk-val">${custs}</div><div class="mk-sub">${shiptos} ship-to${shiptos === 1 ? '' : 's'}</div></div>
-    <div class="mini-kpi-item"><div class="mk-label">Sales Orders</div><div class="mk-val">${orders.toLocaleString()}</div></div>
-    <div class="mini-kpi-item"><div class="mk-label">Tracking #s</div><div class="mk-val">${data.length.toLocaleString()}</div></div>
-    <div class="mini-kpi-item"><div class="mk-label">Carriers</div><div class="mk-val">${carriers}</div></div>
-    <div class="mini-kpi-item"><div class="mk-label">Total Weight</div><div class="mk-val">${totalWt.toLocaleString('en-US',{maximumFractionDigits:0})} lb</div></div>
-    <div class="mini-kpi-item"><div class="mk-label">Freight $</div><div class="mk-val">${fmt(usd)}</div>${other ? `<div class="mk-sub">${other}</div>` : ''}</div>`;
+// ── Filtering, grouping, sorting ──
+let searchTimer;
+function onSearch(v) { clearTimeout(searchTimer); searchTimer = setTimeout(() => { F.search = v; applyFilters(); }, 150); }
+function setFilter(k, v) { F[k] = v; applyFilters(); }
+function clearFilters() {
+  Object.keys(F).forEach(k => F[k] = '');
+  ['searchInput','custFilter','carrierFilter','stateFilter','plantFilter','refFilter'].forEach(id => document.getElementById(id).value = '');
+  applyFilters();
 }
 
-// ── Filtering & sorting ──
 function applyFilters() {
-  let data = [...allData];
-  if (search) {
-    const q = search.toLowerCase();
-    data = data.filter(r => [r.cust_name, r.cust_id, r.shipto_name, r.shipto_id, r.city, r.state, r.po,
-      r.sales_order, r.delivery, r.material, r.desc, r.track, r.rep, r.carrier].join(' ').toLowerCase().includes(q));
-  }
-  if (repFilter)   data = data.filter(r => r.rep       === repFilter);
-  if (custFilter)  data = data.filter(r => r.cust_name === custFilter);
-  if (stateFilter) data = data.filter(r => r.state     === stateFilter);
-  if (carrFilter)  data = data.filter(r => r.carrier   === carrFilter);
-
-  data.sort((a,b) => a.delivery.localeCompare(b.delivery) || a.seq - b.seq);
-  filtered = data;            // line level (KPIs + exports)
-  groups   = buildGroups(data);
-
-  if (textFields.has(sortField)) {
-    groups.sort((a,b) => {
-      const av = (a[sortField]||'').toLowerCase();
-      const bv = (b[sortField]||'').toLowerCase();
-      return av < bv ? -sortDir : av > bv ? sortDir : 0;
-    });
-  } else {
-    groups.sort((a,b) => (a[sortField]-b[sortField]) * sortDir);
-  }
-
+  const terms = F.search.toLowerCase().split(/\s+/).filter(Boolean);   // every word must match
+  filteredLines = allLines.filter(l =>
+    (!F.cust    || l.soldtoName === F.cust) &&
+    (!F.carrier || l.carrier === F.carrier) &&
+    (!F.state   || l.state === F.state) &&
+    (!F.plant   || l.plant === F.plant) &&
+    (!F.ref     || (F.ref === 'shp' ? (l.refType === 'shp' || l.refType === 'dlv') : l.refType === F.ref)) &&
+    (!terms.length || terms.every(t => l.hay.includes(t))));
+  groups = buildGroups(filteredLines);
+  sortGroups();
+  const nRef = groups.filter(g => g.refType === 'pro').length;
   document.getElementById('rowCount').textContent =
-    `${groups.length.toLocaleString()} order${groups.length === 1 ? '' : 's'} · ${data.length.toLocaleString()} tracking #${data.length === 1 ? '' : 's'}`;
-  renderMiniKpi(data);
+    `${plural(groups.length, 'shipment')} · ${nRef.toLocaleString()} with PRO/tracking · ${plural(filteredLines.length, 'line')}`;
+  renderKpis();
   renderTable();
 }
 
-// ── Group tracking lines by Sales Order ──
-let groups   = [];
-const expanded = new Set();
 function buildGroups(lines) {
   const map = new Map();
-  lines.forEach(r => {
-    const key = r.sales_order || ('DLV-' + r.delivery);
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(r);
-  });
-  return [...map.entries()].map(([key, ls]) => {
-    const f = ls[0];
-    const u = field => [...new Set(ls.map(l => l[field]).filter(Boolean))];
-    const mats   = u('material');
-    const dlvs   = u('delivery');
-    const shipTo = u('shipto_name');
-    const carrs  = [...new Set(ls.map(l => carrierInfo(l.carrier, l.track).label))];
-    const qtyUnits = u('qty_unit');
-    return {
-      key, lines: ls, count: ls.length,
-      cust_name: f.cust_name, cust_id: f.cust_id,
-      shipto_name: f.shipto_name, shipto_id: f.shipto_id, city: f.city, state: f.state,
-      multi_shipto: shipTo.length > 1 ? shipTo.length : 0,
-      po: u('po').join(', '), sales_order: f.sales_order,
-      deliveries: dlvs,
-      material: mats.length === 1 ? mats[0] : `${mats.length} items`,
-      mat_count: mats.length,
-      mat_desc: mats.length === 1 ? f.desc
-        : mats.map(m => ls.find(l => l.material === m).desc).filter(Boolean).join(' · '),
-      qty: ls.reduce((s,l) => s + l.qty, 0),
-      qty_unit: qtyUnits.length === 1 ? qtyUnits[0] : '',
-      order_date: f.order_date, order_sort: f.order_sort,
-      ship_date: f.ship_date, ship_sort: f.ship_sort,
-      track: f.track,
-      carrier: carrs.join(' / '), carrier_cls: carrierInfo(f.carrier, f.track).cls,
-      freight: u('freight').join(' | '),
-      rep: u('rep').join(', '),
-      weight_lb: ls.reduce((s,l) => s + l.weight_lb, 0),
-      amount: ls.reduce((s,l) => s + l.amount, 0),
-      curr: f.curr,
-    };
-  });
-}
-function toggleGroup(key) {
-  expanded.has(key) ? expanded.delete(key) : expanded.add(key);
-  renderTable();
-}
-function expandAll(open) {
-  if (open) groups.forEach(g => g.count > 1 && expanded.add(g.key));
-  else expanded.clear();
-  renderTable();
-}
-
-function filterParcel(v)    { search      = v; applyFilters(); }
-function filterByCust(v)    { custFilter  = v; applyFilters(); }
-function filterByCarrier(v) { carrFilter  = v; applyFilters(); }
-function filterByRep(v)     { repFilter   = v; applyFilters(); }
-function filterByState(v)   { stateFilter = v; applyFilters(); }
-function clearFilters() {
-  search = custFilter = carrFilter = repFilter = stateFilter = '';
-  ['searchInput','custFilter','carrierFilter','repFilter','stateFilter'].forEach(id => document.getElementById(id).value = '');
-  applyFilters();
-}
-
-function sortBy(field) {
-  if (sortField === field) { sortDir *= -1; }
-  else { sortField = field; sortDir = textFields.has(field) ? 1 : -1; }
-  document.querySelectorAll('#headerRow .sort-arrow').forEach(el => el.textContent = '');
-  const el = document.querySelector(`#th-${field} .sort-arrow`);
-  if (el) el.textContent = sortDir === 1 ? '↑' : '↓';
-  applyFilters();
-}
-
-const MAX_ROWS = 1500;
-function descHtml(desc, title) {
-  if (desc) {
-    const short = desc.length > 90 ? desc.slice(0, 88) + '…' : desc;
-    return `<span class="desc" title="${esc(title || desc)}">${esc(short)}</span>`;
+  for (const l of lines) {
+    let g = map.get(l.refKey);
+    if (!g) { g = { key: l.refKey, refType: l.refType, lines: [] }; map.set(l.refKey, g); }
+    g.lines.push(l);
   }
-  return '';
+  const out = [];
+  for (const g of map.values()) {
+    const ls = g.lines, f = ls[0];
+    const u = fn => [...new Set(ls.map(fn).filter(Boolean))];
+    const many = (arr, word) => arr.length <= 1 ? (arr[0] || '') : `${arr.length} ${word}`;
+    const maxKey = k => ls.reduce((m, l) => Math.max(m, l[k]), 0);
+    const minKey = k => ls.reduce((m, l) => (l[k] && (!m || l[k] < m)) ? l[k] : m, 0);
+    const soldtos = u(l => l.soldtoName), shiptos = u(l => l.shiptoName), orders = u(l => l.order),
+          pos = u(l => l.po), dlvs = u(l => l.delivery), skus = u(l => l.sku), carriers = u(l => l.carrier),
+          plants = u(l => l.plant), shipments = u(l => l.shipment);
+    Object.assign(g, {
+      count: ls.length,
+      pro: f.pro, shipment: shipments.length === 1 ? shipments[0] : (shipments.length ? `${shipments.length} shipments` : ''),
+      carrierCode: carriers.length === 1 ? carriers[0] : '', carriers,
+      carrier: carriers.length ? [...new Set(carriers.map(c => carrierInfo(c).label))].join(' / ') : '',
+      soldto: soldtos.length === 1 ? soldtos[0] : `${soldtos.length} customers`, soldtoId: f.soldto, soldtoMulti: soldtos.length > 1,
+      shipto: shiptos.length === 1 ? shiptos[0] : `${shiptos.length} ship-tos`, shiptoId: f.shipto, shiptoMulti: shiptos.length > 1,
+      loc: [f.city, f.state].filter(Boolean).join(', '),
+      order: many(orders, 'orders'), po: many(pos, 'POs'), delivery: many(dlvs, 'deliveries'),
+      item: skus.length === 1 ? skus[0] : `${skus.length} items`, itemMulti: skus.length > 1,
+      desc: skus.length === 1 ? f.desc : '',
+      orderDt: minKey('orderKey'), sched: maxKey('schedKey'), ship: maxKey('shipKey'), delvDt: maxKey('delvKey'),
+      plant: plants.join(', '),
+      value: ls.reduce((s, l) => s + l.value, 0),
+    });
+    g.refSort = g.refType === 'pro' ? g.pro : g.refType === 'shp' ? g.shipment : g.delivery;
+    out.push(g);
+  }
+  return out;
 }
+
+function sortBy(key) {
+  const col = COLS.find(c => c.key === key);
+  if (sortField === key) sortDir *= -1;
+  else { sortField = key; sortDir = col.type === 'num' ? -1 : 1; }
+  renderHeader();
+  sortGroups(); renderTable();
+}
+function sortGroups() {
+  const col = COLS.find(c => c.key === sortField);
+  const val = g => sortField === 'ref' ? (g.refType === 'pro' ? '0' : g.refType === 'shp' ? '1' : g.refType === 'dlv' ? '2' : '3') + g.refSort
+                 : sortField === 'item' ? (g.itemMulti ? '~' : '') + (g.desc || g.item) : g[sortField];
+  if (col.type === 'num') groups.sort((a, b) => ((val(a) || 0) - (val(b) || 0)) * sortDir || a.refSort.localeCompare(b.refSort));
+  else groups.sort((a, b) => {
+    const av = String(val(a) || '').toLowerCase(), bv = String(val(b) || '').toLowerCase();
+    if (!av && bv) return 1; if (av && !bv) return -1;          // blanks last
+    return av < bv ? -sortDir : av > bv ? sortDir : 0;
+  });
+}
+
+function toggleGroup(key) { expanded.has(key) ? expanded.delete(key) : expanded.add(key); renderTable(); }
+function expandAll(open) {
+  if (open) groups.slice(0, MAX_ROWS).forEach(g => g.count > 1 && expanded.add(g.key)); else expanded.clear();
+  renderTable();
+}
+
+// ── KPIs ──
+function renderKpis() {
+  const ls = filteredLines;
+  const val = ls.reduce((s, l) => s + l.value, 0);
+  const custs = new Set(ls.map(l => l.soldtoName)).size;
+  const shiptos = new Set(ls.map(l => l.shipto || l.shiptoName)).size;
+  const orders = new Set(ls.map(l => l.order)).size;
+  const pros = groups.filter(g => g.refType === 'pro');
+  const ltl = pros.filter(g => carrierInfo(g.carrierCode).ltl).length;
+  const carriers = new Set(ls.map(l => l.carrier).filter(Boolean)).size;
+  const open = groups.filter(g => g.refType === 'open').length;
+  document.getElementById('miniKpi').innerHTML = `
+    <div class="mini-kpi-item"><div class="mk-label">Sold-To Customers</div><div class="mk-val">${custs.toLocaleString()}</div><div class="mk-sub">${plural(shiptos, 'ship-to')}</div></div>
+    <div class="mini-kpi-item"><div class="mk-label">Orders</div><div class="mk-val">${orders.toLocaleString()}</div><div class="mk-sub">${plural(ls.length, 'line')}</div></div>
+    <div class="mini-kpi-item"><div class="mk-label">PRO / Tracking #s</div><div class="mk-val">${pros.length.toLocaleString()}</div><div class="mk-sub">${ltl.toLocaleString()} linkable LTL</div></div>
+    <div class="mini-kpi-item"><div class="mk-label">Carriers</div><div class="mk-val">${carriers}</div></div>
+    <div class="mini-kpi-item"><div class="mk-label">Not Shipped</div><div class="mk-val">${open.toLocaleString()}</div><div class="mk-sub">order groups</div></div>
+    <div class="mini-kpi-item"><div class="mk-label">Delv Value</div><div class="mk-val">${fmt(val)}</div></div>`;
+}
+
+// ── Table ──
+const MAX_ROWS = 1500;
+const dStr = k => k ? `${String(Math.floor(k/100)%100).padStart(2,'0')}/${String(k%100).padStart(2,'0')}/${Math.floor(k/10000)}` : '';
+
+function refCell(g) {
+  if (g.refType === 'pro') {
+    const ci  = carrierInfo(g.carrierCode, g.pro);
+    let n     = ci.ltl ? g.pro.replace(/[^A-Za-z0-9-]/g, '') : g.pro;
+    if (ci.proFormat) n = ci.proFormat(n);
+    const tag = ci.ltl ? `<span class="ref-tag pro">PRO</span>` : ci.url ? `<span class="ref-tag trk">TRK</span>` : `<span class="ref-tag shp">REF</span>`;
+    const copy = `<button class="copy-pro" title="Copy number" onclick="event.stopPropagation();copyPro(this, ${esc(JSON.stringify(n))})">⧉</button>`;
+    const sub = g.shipment ? `<span class="sub">Shpt ${esc(g.shipment)}</span>` : '';
+    if (!ci.url) return `${tag}<span class="track-plain">${esc(g.pro)}</span>${copy}${sub}`;
+    const title = ci.noDeepLink ? ' title="Opens the carrier tracking page — paste the number there"' : '';
+    return `<a class="track-link" href="${ci.url(encodeURIComponent(n))}" target="_blank" rel="noopener"${title}
+              onclick="event.stopPropagation()">${tag}${esc(g.pro)} <span style="opacity:0.5;font-size:10px">&#8599;</span></a>${copy}${sub}`;
+  }
+  if (g.refType === 'shp')  return `<span class="ref-tag shp">SHPT</span><span class="track-plain">${esc(g.shipment)}</span><span class="sub">no PRO / tracking # in report</span>`;
+  if (g.refType === 'dlv')  return `<span class="ref-tag dlv">DLV</span><span class="track-plain">${esc(g.delivery)}</span><span class="sub">no PRO / tracking # in report</span>`;
+  return `<span class="ref-tag open">OPEN</span><span class="track-none">${esc(/^\d+$/.test(g.lines[0].delivery) ? 'Not shipped' : (g.lines[0].delivery || 'Not shipped'))}</span>`;
+}
+
 function renderTable() {
   const tb = document.getElementById('tbody');
-  if (!filtered.length) {
-    tb.innerHTML = `<tr><td colspan="14" class="empty"><div class="empty-icon">🔍</div>No results matching current filters.</td></tr>`;
+  if (!groups.length) {
+    tb.innerHTML = `<tr><td colspan="${COLS.length + 1}" class="empty"><div class="empty-icon">🔍</div>No results matching current search / filters.</td></tr>`;
     return;
   }
-  const shown = groups.slice(0, MAX_ROWS);
-  const money = (v, cur) => fmt(v) + (cur && cur !== 'USD' ? `<span class="cur">${esc(cur)}</span>` : '');
-  const trackLink = r => {
-    const ci = carrierInfo(r.carrier, r.track);
-    return `<a class="track-link" href="${ci.url(encodeURIComponent(r.track))}" target="_blank" rel="noopener"
-              onclick="event.stopPropagation()">${esc(r.track)} <span style="opacity:0.5;font-size:10px">&#8599;</span></a>`;
-  };
-  const lineWt = r => r.unit.startsWith('KG')
-    ? `${r.weight.toFixed(1)} kg<span class="sub">${r.weight_lb.toFixed(1)} lb</span>`
-    : `${r.weight.toFixed(1)} lb`;
-
-  tb.innerHTML = shown.map((g, gi) => {
-    const multi  = g.count > 1;
-    const open   = multi && expanded.has(g.key);
-    const loc    = [g.city, g.state].filter(Boolean).join(', ');
-    const zebra  = gi % 2 ? 'odd' : '';
-    const dlvTxt = g.deliveries.length > 1 ? `${g.deliveries.length} deliveries` : `Dlv ${esc(g.deliveries[0] || '')}`;
+  const html = [];
+  groups.slice(0, MAX_ROWS).forEach((g, gi) => {
+    const multi = g.count > 1, open = multi && expanded.has(g.key);
     const keyArg = esc(JSON.stringify(g.key));
-    const trackCell = multi
-      ? `<button class="pkg-toggle ${open ? 'open' : ''}" onclick="event.stopPropagation();toggleGroup(${keyArg})">
-           <span class="caret">▸</span> ${g.count} tracking #s</button>`
-      : trackLink(g.lines[0]);
-    const wtCell = !multi ? lineWt(g.lines[0]) : `${g.weight_lb.toFixed(1)} lb`;
-
-    let html = `<tr class="grp ${zebra} ${multi ? 'clickable' : ''} ${open ? 'is-open' : ''}" ${multi ? `onclick="toggleGroup(${keyArg})"` : ''}>
-      <td class="bold">${esc(g.cust_name)}<span class="sub">${esc(g.cust_id)}</span></td>
-      <td>${esc(g.shipto_name)}${g.multi_shipto ? ` <span class="cur">+${g.multi_shipto - 1}</span>` : ''}<span class="sub">${esc(loc)}${g.shipto_id ? ' · ' + esc(g.shipto_id) : ''}</span></td>
-      <td class="mono muted">${esc(g.po)}</td>
-      <td class="mono muted nowrap">${esc(g.sales_order)}<span class="sub">${dlvTxt}</span></td>
-      <td class="mono">${esc(g.material)}${descHtml(g.mat_desc, g.mat_count > 1 ? g.mat_desc : '')}</td>
-      <td class="num">${g.qty.toLocaleString()} <span class="cur">${esc(g.qty_unit)}</span></td>
-      <td class="nowrap">${g.order_date}</td>
-      <td class="nowrap">${g.ship_date}</td>
-      <td class="nowrap">${trackCell}</td>
-      <td><span class="badge ${g.carrier_cls}">${esc(g.carrier)}</span></td>
-      <td class="muted nowrap">${esc(g.freight)}</td>
-      <td class="nowrap">${esc(g.rep)}</td>
-      <td class="num">${wtCell}</td>
-      <td class="num">${money(g.amount, g.curr)}</td>
-    </tr>`;
-
-    if (open) {
-      html += g.lines.map((r, i) => {
-        const ci = carrierInfo(r.carrier, r.track);
-        const last = i === g.lines.length - 1 ? 'last' : '';
-        return `<tr class="pkg ${last}">
-          <td class="pkg-idx" colspan="2"><span class="pkg-line"></span>Package ${i + 1} of ${g.count}
-            ${g.multi_shipto ? `<span class="sub">${esc(r.shipto_name)} · ${esc([r.city, r.state].filter(Boolean).join(', '))}</span>` : ''}</td>
-          <td class="mono muted">${g.po.includes(',') ? esc(r.po) : ''}</td>
-          <td class="mono muted nowrap">Dlv ${esc(r.delivery)}<span class="sub">Item ${esc(r.item)} · Seq ${r.seq}</span></td>
-          <td class="mono">${esc(r.material)}${descHtml(r.desc)}</td>
-          <td class="num">${r.qty.toLocaleString()} <span class="cur">${esc(r.qty_unit)}</span></td>
-          <td></td>
-          <td class="nowrap muted">${r.delv_date ? 'Delv ' + r.delv_date : ''}</td>
-          <td class="nowrap">${trackLink(r)}</td>
-          <td><span class="badge ${ci.cls}">${esc(ci.label)}</span></td>
-          <td class="muted nowrap">${g.freight.includes('|') ? esc(r.freight) : ''}</td>
-          <td></td>
-          <td class="num">${lineWt(r)}</td>
-          <td class="num">${money(r.amount, r.curr)}</td>
-        </tr>`;
-      }).join('');
-    }
-    return html;
-  }).join('') + (groups.length > MAX_ROWS
-    ? `<tr><td colspan="14" class="empty">Showing first ${MAX_ROWS.toLocaleString()} of ${groups.length.toLocaleString()} orders — use search or filters to narrow, or export for the full list.</td></tr>`
-    : '');
+    const ci = carrierInfo(g.carrierCode);
+    const toggle = multi
+      ? `<span class="toggle ${open ? 'open' : ''}" title="${g.count} lines">▶</span>`
+      : `<span class="toggle spacer">▶</span>`;
+    html.push(`<tr class="grp ${gi % 2 ? 'odd' : ''} ${multi ? 'clickable' : ''} ${open ? 'is-open' : ''}" ${multi ? `onclick="toggleGroup(${keyArg})"` : ''}>
+      <td class="q-col" onclick="event.stopPropagation()"><input type="checkbox" class="q-check" data-key="${esc(g.key)}" ${queue.has(g.key) ? 'checked' : ''} onclick="toggleQueue(this.dataset.key, this.checked)"></td>
+      <td class="nowrap">${toggle}${refCell(g)}${multi ? `<span class="line-count">${g.count} lines</span>` : ''}</td>
+      <td>${g.carrier ? `<span class="badge ${g.carriers.length === 1 ? ci.cls : 'other'}" title="${esc((ci.fullName || g.carrier) + ' · ' + g.carriers.join(', '))}">${esc(g.carrier)}</span>` : '<span class="track-none">—</span>'}</td>
+      <td class="bold wide">${esc(g.soldto)}${g.soldtoMulti ? '' : `<span class="sub">${esc(g.soldtoId)}</span>`}</td>
+      <td class="wide">${esc(g.shipto)}${g.shiptoMulti ? '' : `<span class="sub">${esc([g.loc, g.shiptoId].filter(Boolean).join(' · '))}</span>`}</td>
+      <td class="mono nowrap">${esc(g.order)}</td>
+      <td class="mono muted nowrap">${esc(g.po)}</td>
+      <td class="mono muted nowrap">${esc(g.delivery)}</td>
+      <td class="mono">${esc(g.item)}${g.desc ? `<span class="desc">${esc(g.desc)}</span>` : ''}</td>
+      <td class="nowrap">${dStr(g.orderDt)}</td>
+      <td class="nowrap">${dStr(g.sched)}</td>
+      <td class="nowrap">${dStr(g.ship)}</td>
+      <td class="nowrap">${dStr(g.delvDt)}</td>
+      <td class="mono muted">${esc(g.plant)}</td>
+      <td class="num">${fmt(g.value)}</td>
+    </tr>`);
+    if (open) g.lines.forEach((l, i) => html.push(`<tr class="line ${i === g.lines.length - 1 ? 'last' : ''}">
+      <td class="q-col"></td>
+      <td class="line-idx">Line ${i + 1} of ${g.count}</td>
+      <td>${g.carriers.length > 1 ? `<span class="badge ${carrierInfo(l.carrier).cls}">${esc(l.carrierLabel)}</span>` : ''}</td>
+      <td class="muted">${g.soldtoMulti ? esc(l.soldtoName) : ''}</td>
+      <td class="muted">${g.shiptoMulti ? `${esc(l.shiptoName)}<span class="sub">${esc([l.city, l.state].filter(Boolean).join(', '))}</span>` : ''}</td>
+      <td class="mono">${esc(l.order)}</td>
+      <td class="mono muted">${esc(l.po)}</td>
+      <td class="mono muted">${esc(l.delivery)}</td>
+      <td class="mono">${esc(l.sku)}${l.desc ? `<span class="desc">${esc(l.desc)}</span>` : ''}</td>
+      <td class="nowrap muted">${fmtDate(l.orderDt)}</td>
+      <td class="nowrap muted">${fmtDate(l.sched)}</td>
+      <td class="nowrap muted">${fmtDate(l.ship)}</td>
+      <td class="nowrap muted">${fmtDate(l.delvDt)}</td>
+      <td class="mono muted">${esc(l.plant)}</td>
+      <td class="num">${fmt(l.value)}</td>
+    </tr>`));
+  });
+  if (groups.length > MAX_ROWS) html.push(`<tr><td colspan="${COLS.length + 1}" class="empty">Showing first ${MAX_ROWS.toLocaleString()} of ${groups.length.toLocaleString()} shipments — search or filter to narrow, or export for the full list.</td></tr>`);
+  tb.innerHTML = html.join('');
+  updateQueueUI();
 }
 
-// ── Export ──
-const EXPORT_HEADERS = ['Customer','Sold-to #','Ship-To','Ship-to #','Street','City','State','Zip','Customer PO','Sales Order','Delivery',
-  'Material','Description','Qty','Units','Order Date','Ship Date','Delv Date','Tracking #','Carrier','Freight Terms','Sales Rep','Weight (lb)','Freight $','Curr'];
+// ── Export (line level, yellow columns + carrier name + tracking link) ──
+const EXPORT_HEADERS = ['Sold-To','Sold-To Name','Ship-To','Ship-To Name','Ship-To Street','City','State','Post Code',
+  'Order Nbr','Order Date','PO Number','Delivery','Delivery Date','Scheduled','Actual Ship','Carrier','Carrier Name',
+  'ProNumber','Shipment (Tracking)','R-O SKU','Description','Delv Value','Plant','Tracking Link'];
 function exportRows() {
-  return filtered.map(r => [
-    r.cust_name, r.cust_id, r.shipto_name, r.shipto_id, r.street, r.city, r.state, r.zip, r.po, r.sales_order, r.delivery,
-    r.material, r.desc || '', r.qty, r.qty_unit, r.order_date, r.ship_date, r.delv_date, r.track,
-    carrierInfo(r.carrier, r.track).label, r.freight, r.rep, +r.weight_lb.toFixed(2), r.amount, r.curr
-  ]);
+  const order = new Map(groups.map((g, i) => [g.key, i]));
+  return [...filteredLines].sort((a, b) => order.get(a.refKey) - order.get(b.refKey)).map(l => {
+    const ci = carrierInfo(l.carrier, l.pro);
+    let n    = ci.ltl ? l.pro.replace(/[^A-Za-z0-9-]/g, '') : l.pro;
+    if (ci.proFormat) n = ci.proFormat(n);
+    const link = l.pro && ci.url && !ci.noDeepLink ? ci.url(encodeURIComponent(n)) : '';
+    return [l.soldto, l.soldtoName, l.shipto, l.shiptoName, l.street, l.city, l.state, l.zip,
+      l.order, fmtDate(l.orderDt), l.po, l.delivery, fmtDate(l.delvDt), fmtDate(l.sched), fmtDate(l.ship),
+      l.carrier, l.carrierName, l.pro, l.shipment, l.sku, l.desc, l.value, l.plant, link];
+  });
 }
-function stamp() { return new Date().toLocaleDateString('en-US').replace(/\//g,'-'); }
-
+const stamp = () => new Date().toLocaleDateString('en-US').replace(/\//g,'-');
 function exportXLSX() {
-  if (!filtered.length) return;
+  if (!filteredLines.length) return;
   const ws = XLSX.utils.aoa_to_sheet([EXPORT_HEADERS, ...exportRows()]);
-  ws['!cols'] = [24,10,26,10,24,14,6,11,14,12,11,12,40,6,6,10,10,10,20,14,22,18,10,10,6].map(w=>({wch:w}));
+  ws['!cols'] = [9,26,9,26,24,14,6,11,11,10,16,11,10,10,10,8,22,16,12,10,40,11,6,40].map(w => ({ wch: w }));
   ws['!autofilter'] = { ref: ws['!ref'] };
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Daily Open Orders');
-  XLSX.writeFile(wb, `Daily_Open_Orders_${stamp()}.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, 'RO Daily Tracking');
+  XLSX.writeFile(wb, `RO_Daily_Tracking_${stamp()}.xlsx`);
+}
+function exportCSV() {
+  if (!filteredLines.length) return;
+  const csv = [EXPORT_HEADERS, ...exportRows()].map(row => row.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `RO_Daily_Tracking_${stamp()}.csv`;
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-function exportCSV() {
-  if (!filtered.length) return;
-  const csv = [EXPORT_HEADERS, ...exportRows()].map(row => row.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `Daily_Open_Orders_${stamp()}.csv`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+// ── Queue: pick shipments, then download them as Excel or PDF ──
+const queue = new Set();          // group keys (PRO / shipment / delivery)
+function isQueued(k) { return queue.has(k); }
+function toggleQueue(key, on) {
+  on ? queue.add(key) : queue.delete(key);
+  updateQueueUI();
+}
+function toggleQueueVisible(on) {
+  groups.slice(0, MAX_ROWS).forEach(g => on ? queue.add(g.key) : queue.delete(g.key));
+  updateQueueUI(); renderTable();
+}
+function queueAllResults() {
+  if (groups.length > 500 && !confirmQueueBig(groups.length)) return;
+  groups.forEach(g => queue.add(g.key));
+  updateQueueUI(); renderTable();
+}
+function confirmQueueBig(n) {
+  // no browser dialogs — show an inline notice and require a second click
+  if (confirmQueueBig.armed) { confirmQueueBig.armed = false; return true; }
+  confirmQueueBig.armed = true;
+  showNotice(`That's ${n.toLocaleString()} shipments — a PDF would be ${n.toLocaleString()}+ pages. Click "Queue all results" again to confirm.`);
+  setTimeout(() => confirmQueueBig.armed = false, 6000);
+  return false;
+}
+function clearQueue() { queue.clear(); updateQueueUI(); renderTable(); }
+function removeFromQueue(key) { queue.delete(key); updateQueueUI(); renderTable(); }
+
+// Rebuild queued shipments from ALL lines so search/filters don't drop any items
+function queuedGroups() {
+  const lines = allLines.filter(l => queue.has(l.refKey));
+  const gs = buildGroups(lines);
+  const order = [...queue];
+  gs.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  return gs;
+}
+function updateQueueUI() {
+  const bar = document.getElementById('queueBar');
+  const n = queue.size;
+  bar.style.display = n ? 'flex' : 'none';
+  document.getElementById('qCount').innerHTML = `<b>${n.toLocaleString()}</b> shipment${n === 1 ? '' : 's'} in queue`;
+  document.querySelectorAll('#tbody input.q-check').forEach(cb => cb.checked = queue.has(cb.dataset.key));
+  const all = document.getElementById('selAll');
+  if (all) {
+    const shown = groups.slice(0, MAX_ROWS);
+    const sel = shown.filter(g => queue.has(g.key)).length;
+    all.checked = shown.length > 0 && sel === shown.length;
+    all.indeterminate = sel > 0 && sel < shown.length;
+  }
+  if (document.getElementById('queuePanel').style.display !== 'none') renderQueuePanel();
+}
+function toggleQueuePanel(force) {
+  const p = document.getElementById('queuePanel');
+  const show = force !== undefined ? force : p.style.display === 'none';
+  p.style.display = show ? 'flex' : 'none';
+  if (show) renderQueuePanel();
+}
+function renderQueuePanel() {
+  const gs = queuedGroups();
+  document.getElementById('qpTitle').textContent = `Download queue · ${gs.length} shipment${gs.length === 1 ? '' : 's'}`;
+  document.getElementById('qpList').innerHTML = gs.length ? gs.map(g => {
+    const ref = refLabel(g);
+    return `<div class="qp-item">
+      <div><div class="qp-ref">${esc(ref.text)}</div>
+      <div class="qp-sub">${esc(g.carrier || '—')} · ${esc(g.soldto)} → ${esc(g.shipto)}</div>
+      <div class="qp-sub">${g.count} line${g.count === 1 ? '' : 's'} · ${fmt(g.value)}${g.ship ? ' · shipped ' + dStr(g.ship) : ''}</div></div>
+      <button class="qp-x" title="Remove" onclick="removeFromQueue(${esc(JSON.stringify(g.key))})">✕</button></div>`;
+  }).join('') : '<div class="qp-empty">Tick the boxes beside shipments to add them here.</div>';
+}
+
+// What to call a shipment's reference, and where it links
+function refLabel(g) {
+  if (g.refType === 'pro') {
+    const ci = carrierInfo(g.carrierCode, g.pro);
+    return { kind: ci.ltl ? 'PRO Number' : ci.url ? 'Tracking Number' : 'Reference Number', text: g.pro, url: trackUrl(g) };
+  }
+  if (g.refType === 'shp') return { kind: 'SAP Shipment (no PRO / tracking # in report)', text: g.shipment, url: null };
+  if (g.refType === 'dlv') return { kind: 'Delivery (no PRO / tracking # in report)', text: g.delivery, url: null };
+  return { kind: 'Not shipped yet', text: 'Order ' + (g.lines[0].order || ''), url: null };
+}
+function trackUrl(g) {
+  if (g.refType !== 'pro') return null;
+  const ci = carrierInfo(g.carrierCode, g.pro);
+  if (!ci.url) return null;
+  let n = ci.ltl ? g.pro.replace(/[^A-Za-z0-9-]/g, '') : g.pro;
+  if (ci.proFormat) n = ci.proFormat(n);
+  return ci.url(encodeURIComponent(n));
+}
+const joinU = (ls, fn) => [...new Set(ls.map(fn).filter(Boolean))].join(', ');
+
+function downloadQueue(kind) {
+  const gs = queuedGroups();
+  if (!gs.length) return;
+  try { kind === 'pdf' ? queuePdf(gs) : queueXlsx(gs); }
+  catch (err) { console.error(err); showNotice('Download failed: ' + err.message); }
+}
+
+// ── Excel: "Shipments" summary sheet + "Items" sheet ──
+function queueXlsx(gs) {
+  const sumHead = ['PRO / Tracking #','Reference Type','Carrier','Carrier Name','Tracking Link','Sold-To','Sold-To Name','Ship-To','Ship-To Name',
+    'City','State','Order Nbr','PO Number','Delivery','SAP Shipment','Order Date','Scheduled','Actual Ship','Delivery Date','Plant','Lines','Delv Value'];
+  const sumRows = gs.map(g => {
+    const r = refLabel(g), f = g.lines[0], ci = carrierInfo(g.carrierCode);
+    return [r.text, r.kind, g.carriers.join(', '), g.carriers.length === 1 ? (ci.fullName || ci.label) : g.carrier, r.url || '',
+      f.soldto, f.soldtoName, f.shipto, f.shiptoName, f.city, f.state,
+      joinU(g.lines, l => l.order), joinU(g.lines, l => l.po), joinU(g.lines, l => l.delivery), joinU(g.lines, l => l.shipment),
+      dStr(g.orderDt), dStr(g.sched), dStr(g.ship), dStr(g.delvDt), g.plant, g.count, +g.value.toFixed(2)];
+  });
+  const ws1 = XLSX.utils.aoa_to_sheet([sumHead, ...sumRows]);
+  sumRows.forEach((row, i) => {           // clickable links on PRO and Tracking Link cells
+    if (!row[4]) return;
+    ['A', 'E'].forEach(c => { const cell = ws1[`${c}${i + 2}`]; if (cell) cell.l = { Target: row[4], Tooltip: 'Track shipment' }; });
+  });
+  ws1['!cols'] = [16,22,8,22,40,9,26,9,26,14,6,14,16,14,12,10,10,10,10,6,6,11].map(w => ({ wch: w }));
+  ws1['!autofilter'] = { ref: ws1['!ref'] };
+
+  const itemHead = ['PRO / Tracking #','Carrier','R-O SKU','Description','Order Nbr','PO Number','Delivery','Sold-To Name','Ship-To Name','Actual Ship','Delv Value'];
+  const itemRows = [];
+  gs.forEach(g => g.lines.forEach(l => itemRows.push([refLabel(g).text, l.carrier, l.sku, l.desc, l.order, l.po, l.delivery,
+    l.soldtoName, l.shiptoName, fmtDate(l.ship), +l.value.toFixed(2)])));
+  const ws2 = XLSX.utils.aoa_to_sheet([itemHead, ...itemRows]);
+  ws2['!cols'] = [16,8,10,42,12,16,12,26,26,10,11].map(w => ({ wch: w }));
+  ws2['!autofilter'] = { ref: ws2['!ref'] };
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, 'Shipments');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Items');
+  XLSX.writeFile(wb, `RO_Tracking_Queue_${stamp()}.xlsx`);
+}
+
+// ── PDF: one shipment card per page (style B), items listed below ──
+function queuePdf(gs) {
+  if (!window.jspdf || !window.jspdf.jsPDF) { showNotice('PDF library did not load — check your internet connection and reload.'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 40;
+  const NAVY = [20, 27, 45], MUTED = [107, 118, 148], ORANGE = [232, 93, 47], BLUE = [31, 95, 168], LINE = [201, 207, 221];
+  const pageShipment = {};   // page number → shipment index
+  const generated = new Date().toLocaleDateString('en-US');
+  const fit = (txt, w) => { const t = String(txt ?? ''); return doc.getTextWidth(t) <= w ? t : doc.splitTextToSize(t, w)[0].replace(/\s*\S*$/, '') + '…'; };
+  const label = (txt, x, y, opts) => { doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...MUTED); doc.text(txt.toUpperCase(), x, y, opts); };
+
+  gs.forEach((g, i) => {
+    if (i) doc.addPage();
+    const first = doc.getNumberOfPages();
+    const f = g.lines[0], ref = refLabel(g), ci = carrierInfo(g.carrierCode);
+
+    // Page title
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(...NAVY);
+    doc.text('Shipment Tracking Summary', M, 46);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...MUTED);
+    doc.text('Rust-Oleum · RO Daily Tracking Tool', W - M, 46, { align: 'right' });
+
+    // Card: orange side bar + navy rounded border
+    const cx = M, cy = 60, cw = W - 2 * M, ch = 176, x0 = cx + 22, xr = cx + cw - 18;
+    doc.setFillColor(...ORANGE); doc.roundedRect(cx, cy, cw, ch, 8, 8, 'F');
+    doc.setFillColor(255, 255, 255); doc.roundedRect(cx + 7, cy, cw - 7, ch, 8, 8, 'F'); doc.rect(cx + 7, cy, 12, ch, 'F');
+    doc.setDrawColor(...NAVY); doc.setLineWidth(1.1); doc.roundedRect(cx, cy, cw, ch, 8, 8, 'S');
+
+    // Row 1 — PRO / tracking number (clickable) + carrier
+    label(ref.kind + (ref.url ? ' — click to track' : ''), x0, cy + 20);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(22); doc.setTextColor(...(ref.url ? BLUE : NAVY));
+    const refText = fit(ref.text, cw * 0.58);
+    if (ref.url) {
+      doc.textWithLink(refText, x0, cy + 45, { url: ref.url });
+      const tw = doc.getTextWidth(refText);
+      doc.setDrawColor(...BLUE); doc.setLineWidth(0.8); doc.line(x0, cy + 48, x0 + tw, cy + 48);
+    } else doc.text(refText, x0, cy + 45);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...MUTED);
+    const subBits = [];
+    const shp = joinU(g.lines, l => l.shipment), dlv = joinU(g.lines, l => l.delivery);
+    if (shp && g.refType !== 'shp') subBits.push('SAP Shipment ' + shp);
+    if (dlv && g.refType !== 'dlv') subBits.push('Delivery ' + dlv);
+    if (subBits.length) doc.text(fit(subBits.join(' · '), cw * 0.6), x0, cy + 62);
+
+    label('Carrier', xr, cy + 20, { align: 'right' });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(...NAVY);
+    doc.text(fit(g.carrier || 'Not assigned', cw * 0.34), xr, cy + 38, { align: 'right' });
+    doc.setFont('courier', 'normal'); doc.setFontSize(9); doc.setTextColor(...MUTED);
+    doc.text(g.carriers.join(', ') || '', xr, cy + 51, { align: 'right' });
+    if (ci.noDeepLink && ref.url) {
+      doc.setFont('helvetica', 'italic'); doc.setFontSize(7); doc.text('Opens carrier tracking page — enter the PRO there', xr, cy + 62, { align: 'right' });
+    }
+
+    // dashed divider
+    const dash = y => { doc.setDrawColor(...LINE); doc.setLineWidth(0.7); doc.setLineDashPattern([3, 2], 0); doc.line(x0, y, xr, y); doc.setLineDashPattern([], 0); };
+    dash(cy + 74);
+
+    // Row 2 — Sold-To / Ship-To
+    const half = (xr - x0) / 2;
+    label('Sold-To' + (g.soldtoMulti ? '' : ' · #' + f.soldto), x0, cy + 90);
+    label('Ship-To' + (g.shiptoMulti ? '' : ' · #' + f.shipto), x0 + half, cy + 90);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.setTextColor(...NAVY);
+    doc.text(fit(g.soldto, half - 14), x0, cy + 104);
+    doc.text(fit(g.shipto, half - 4), x0 + half, cy + 104);
+    const addr = g.shiptoMulti ? '' : [f.street, [f.city, f.state].filter(Boolean).join(', '), f.zip].filter(Boolean).join(' · ');
+    if (addr) { doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...MUTED); doc.text(fit(addr, half - 4), x0 + half, cy + 115); }
+    dash(cy + 124);
+
+    // Row 3 — KPI strip
+    const kpis = [
+      ['Order #', joinU(g.lines, l => l.order)], ['PO #', joinU(g.lines, l => l.po)],
+      ['Actual Ship', dStr(g.ship) || '—'], ['Line Items', String(g.count)], ['Delv Value', fmt(g.value)],
+    ];
+    const kw = (xr - x0) / kpis.length;
+    kpis.forEach(([l, v], k) => {
+      const kx = x0 + k * kw;
+      label(l, kx + (k ? 8 : 0), cy + 141);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(12); doc.setTextColor(...NAVY);
+      doc.text(fit(v || '—', kw - 12), kx + (k ? 8 : 0), cy + 160);
+      if (k) { doc.setDrawColor(227, 231, 238); doc.setLineWidth(0.8); doc.line(kx, cy + 133, kx, cy + 165); }
+    });
+
+    // Item table
+    const body = g.lines.map(l => [l.sku, l.desc || '', l.order, l.delivery, fmt(l.value)]);
+    doc.autoTable({
+      startY: cy + ch + 18,
+      head: [['R-O SKU', 'Description', 'Order #', 'Delivery', 'Delv Value']],
+      body,
+      foot: [['', `Total · ${g.count} line${g.count === 1 ? '' : 's'}`, '', '', fmt(g.value)]],
+      showFoot: 'lastPage',
+      margin: { left: M, right: M, top: 64, bottom: 46 },
+      theme: 'plain',
+      styles: { font: 'helvetica', fontSize: 8.5, cellPadding: { top: 4, bottom: 4, left: 5, right: 5 }, textColor: NAVY, lineColor: [230, 233, 239], lineWidth: { bottom: 0.5 } },
+      headStyles: { fontStyle: 'bold', fontSize: 7.5, textColor: NAVY, lineColor: NAVY, lineWidth: { bottom: 1.2 } },
+      footStyles: { fontStyle: 'bold', textColor: NAVY, lineColor: NAVY, lineWidth: { top: 1 } },
+      columnStyles: { 0: { font: 'courier', cellWidth: 74 }, 2: { font: 'courier', cellWidth: 74 }, 3: { font: 'courier', cellWidth: 74 }, 4: { halign: 'right', cellWidth: 72 } },
+      didParseCell: d => { if (d.column.index === 4 && d.section !== 'body') d.cell.styles.halign = 'right'; },
+      didDrawPage: d => {
+        if (doc.getNumberOfPages() > first) {   // continuation page header
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(...NAVY);
+          doc.text(`${ref.kind.split(' (')[0]} ${ref.text} — continued`, M, 44);
+          if (ref.url) { doc.link(M, 34, doc.getTextWidth(`${ref.kind.split(' (')[0]} ${ref.text} — continued`), 14, { url: ref.url }); }
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...MUTED);
+          doc.text(fit(`${g.carrier} · ${g.soldto}  to  ${g.shipto}`, W - 2 * M), M, 56);
+        }
+      },
+    });
+    for (let p = first; p <= doc.getNumberOfPages(); p++) pageShipment[p] = i;
+  });
+
+  // Footers
+  const total = doc.getNumberOfPages();
+  for (let p = 1; p <= total; p++) {
+    doc.setPage(p);
+    doc.setDrawColor(230, 233, 239); doc.setLineWidth(0.6); doc.line(M, H - 34, W - M, H - 34);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(138, 147, 168);
+    doc.text('RO Daily Tracking Tool · Rust-Oleum', M, H - 22);
+    doc.text(`Generated ${generated} · Shipment ${pageShipment[p] + 1} of ${gs.length} · Page ${p} of ${total}`, W - M, H - 22, { align: 'right' });
+  }
+  doc.save(`RO_Tracking_Queue_${stamp()}.pdf`);
 }
 
 // ── Drag & drop ──
@@ -770,16 +1139,14 @@ zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderCo
 zone.addEventListener('dragleave', () => { zone.style.borderColor = ''; });
 zone.addEventListener('drop', e => {
   e.preventDefault(); zone.style.borderColor = '';
-  const file = [...e.dataTransfer.files].find(f => f.name.match(/\.xlsx?$/i));
+  const file = [...e.dataTransfer.files].find(f => /\.xlsx?$/i.test(f.name));
   if (!file) { showNotice('Please drop an Excel (.xlsx) file.'); return; }
   handleFile(file);
 });
-
 function showNotice(msg) {
   const n = document.getElementById('zoneNotice');
   n.textContent = msg; n.style.display = 'block';
-  clearTimeout(n._t);
-  n._t = setTimeout(() => { n.style.display = 'none'; }, 6000);
+  clearTimeout(n._t); n._t = setTimeout(() => { n.style.display = 'none'; }, 7000);
 }
 </script>
 </body>
