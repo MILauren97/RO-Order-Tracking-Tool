@@ -205,6 +205,15 @@ td.line-idx { color: var(--muted); padding-left: 30px; font-size: 11px; white-sp
   font-size: 11px; font-family: var(--font-mono); display: none;
 }
 /* ── Queue ── */
+.ver { color: var(--accent); }
+th.q-col, td.q-col { width: 96px !important; padding-left: 10px !important; }
+.q-all { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: var(--accent); white-space: nowrap; }
+.q-add {
+  padding: 4px 9px; font-size: 11px; font-weight: 500; border-radius: 12px; cursor: pointer; white-space: nowrap;
+  background: rgba(232,93,47,0.12); color: #f08a64; border: 1px solid rgba(232,93,47,0.45); font-family: var(--font-sans);
+}
+.q-add:hover { background: rgba(232,93,47,0.25); }
+.q-add.on { background: rgba(99,153,34,0.2); color: #a6d36b; border-color: rgba(99,153,34,0.6); }
 .hdr-queue { padding: 7px 12px; font-size: 12px; border-radius: var(--radius); cursor: pointer; font-family: var(--font-sans);
   background: rgba(232,93,47,0.14); color: #f08a64; border: 1px solid rgba(232,93,47,0.5); }
 .hdr-queue b { font-family: var(--font-mono); margin-left: 4px; color: #fff; }
@@ -271,7 +280,7 @@ const PRODUCTS = {"100001":"SK 1GL 4PK ORIGINAL WATERPROOFER","100005":"SK 5GL O
     <div class="ro-badge">RO</div>
     <div>
       <h1>RO Daily Tracking Tool</h1>
-      <div class="header-meta">Orders, deliveries &amp; carrier tracking / PRO numbers</div>
+      <div class="header-meta">Orders, deliveries &amp; carrier tracking / PRO numbers · <span class="ver">Version 10/28/26 · PDF queue</span></div>
     </div>
   </div>
   <div style="display:flex;align-items:center;gap:14px">
@@ -506,7 +515,8 @@ let sortField = 'ship', sortDir = -1;
 
 // ── Columns (group-level) ──
 const COLS = [
-  { key: 'ref',     label: 'PRO / Tracking #', type: 'text' },
+  { key: 'proNum',  label: 'PRO #',            type: 'text' },
+  { key: 'trackNum',label: 'Tracking #',       type: 'text' },
   { key: 'carrier', label: 'Carrier',          type: 'text' },
   { key: 'soldto',  label: 'Sold-To',          type: 'text' },
   { key: 'shipto',  label: 'Ship-To',          type: 'text' },
@@ -524,7 +534,7 @@ const COLS = [
 ];
 function renderHeader() {
   document.getElementById('headerRow').innerHTML =
-    `<th class="q-col" title="Select / unselect all shown shipments"><input type="checkbox" id="selAll" onclick="event.stopPropagation(); toggleQueueVisible(this.checked)"></th>` + COLS.map(c =>
+    `<th class="q-col" title="Add / remove every shipment shown"><label class="q-all"><input type="checkbox" id="selAll" onclick="event.stopPropagation(); toggleQueueVisible(this.checked)"> PDF Queue</label></th>` + COLS.map(c =>
     `<th class="${c.num ? 'num' : ''} ${sortField === c.key ? 'sorted' : ''}" onclick="sortBy('${c.key}')">${c.label}` +
     `<span class="sort-arrow">${sortField === c.key ? (sortDir === 1 ? '↑' : '↓') : ''}</span></th>`).join('');
 }
@@ -773,6 +783,8 @@ function buildGroups(lines) {
       freight: packages.reduce((s, p) => s + p.freight, 0),
     });
     g.expandable = g.count > 1 || packages.length > 1;
+    g.proNum = g.refType === 'pro' ? g.pro : '';
+    g.trackNum = packages.length ? packages[0].track : '';
     g.refSort = g.refType === 'pro' ? g.pro : g.refType === 'trk' ? (packages[0] ? packages[0].track : '') : g.refType === 'shp' ? g.shipment : g.delivery;
     out.push(g);
   }
@@ -839,6 +851,22 @@ function numLink(carrierCode, number, tagged) {
   return `<a class="track-link" href="${url}" target="_blank" rel="noopener"${title}
             onclick="event.stopPropagation()">${tag}${esc(number)} <span style="opacity:0.5;font-size:10px">&#8599;</span></a>${copy}`;
 }
+function proCell(g) {
+  if (g.refType === 'pro') return numLink(g.carrierCode, g.pro, false) + (g.shipment ? `<span class="sub">Shpt ${esc(g.shipment)}</span>` : '');
+  return '<span class="track-none">—</span>';
+}
+function trackCell(g) {
+  const p = g.packages;
+  if (p.length) {
+    const shown = p.slice(0, 3).map((k, i) => (i ? '<br>' : '') + numLink(k.carrier || g.carrierCode, k.track, false)).join('');
+    return shown + (p.length > 3 ? `<span class="sub">+${p.length - 3} more — expand to see all</span>` : '')
+      + `<span class="sub">${p.length > 1 ? `${p.length} packages · ` : ''}Dlv ${esc(g.delivery)}</span>`;
+  }
+  if (g.refType === 'pro') return '<span class="track-none">—</span>';
+  if (g.refType === 'shp') return `<span class="track-none">none in report</span><span class="sub">SAP Shpt ${esc(g.shipment)}</span>`;
+  if (g.refType === 'dlv') return `<span class="track-none">none in report</span><span class="sub">Dlv ${esc(g.delivery)}</span>`;
+  return `<span class="ref-tag open">OPEN</span><span class="track-none">${esc(/^\d+$/.test(g.lines[0].delivery) ? 'Not shipped' : (g.lines[0].delivery || 'Not shipped'))}</span>`;
+}
 function refCell(g) {
   if (g.refType === 'pro') {
     return numLink(g.carrierCode, g.pro, true) + (g.shipment ? `<span class="sub">Shpt ${esc(g.shipment)}</span>` : '');
@@ -871,8 +899,9 @@ function renderTable() {
       : `<span class="toggle spacer">▶</span>`;
     const units = [...new Set(g.items.map(l => l.units).filter(Boolean))];
     html.push(`<tr class="grp ${gi % 2 ? 'odd' : ''} ${multi ? 'clickable' : ''} ${open ? 'is-open' : ''}" ${multi ? `onclick="toggleGroup(${keyArg})"` : ''}>
-      <td class="q-col" onclick="event.stopPropagation()"><input type="checkbox" class="q-check" data-key="${esc(g.key)}" ${queue.has(g.key) ? 'checked' : ''} onclick="toggleQueue(this.dataset.key, this.checked)"></td>
-      <td class="nowrap"><div class="ref-wrap">${toggle}<div>${refCell(g)}${g.count > 1 ? `<span class="line-count">${g.count} items</span>` : ''}</div></div></td>
+      <td class="q-col" onclick="event.stopPropagation()"><button class="q-add ${queue.has(g.key) ? 'on' : ''}" data-key="${esc(g.key)}" onclick="toggleQueue(this.dataset.key, !queue.has(this.dataset.key))">${queue.has(g.key) ? '✓ Queued' : '+ Queue'}</button></td>
+      <td class="nowrap"><div class="ref-wrap">${toggle}<div>${proCell(g)}${g.count > 1 ? `<span class="line-count">${g.count} items</span>` : ''}</div></div></td>
+      <td class="nowrap">${trackCell(g)}</td>
       <td>${g.carrier ? `<span class="badge ${g.carriers.length === 1 ? ci.cls : 'other'}" title="${esc((ci.fullName || g.carrier) + ' · ' + g.carriers.join(', '))}">${esc(g.carrier)}</span>` : '<span class="track-none">—</span>'}</td>
       <td class="bold wide">${esc(g.soldto)}${g.soldtoMulti ? '' : `<span class="sub">${esc(g.soldtoId)}</span>`}</td>
       <td class="wide">${esc(g.shipto)}${g.shiptoMulti ? '' : `<span class="sub">${esc([g.loc, g.shiptoId].filter(Boolean).join(' · '))}</span>`}</td>
@@ -893,14 +922,15 @@ function renderTable() {
     if (g.packages.length > 1) g.packages.forEach((k, i) => html.push(`<tr class="line pkg">
       <td class="q-col"></td>
       <td class="line-idx">📦 ${esc(k.pkg || `Package ${i + 1}`)}</td>
-      <td colspan="2" class="nowrap">${numLink(k.carrier || g.carrierCode, k.track, true)}</td>
-      <td colspan="5" class="muted">${k.weight ? `${k.weight.toLocaleString()} lb` : ''}${k.weight && k.freight ? ' · ' : ''}${k.freight ? `${fmt(k.freight)} freight` : ''}</td>
-      <td colspan="7"></td>
+      <td class="nowrap">${numLink(k.carrier || g.carrierCode, k.track, false)}</td>
+      <td colspan="6" class="muted">${k.weight ? `${k.weight.toLocaleString()} lb` : ''}${k.weight && k.freight ? ' · ' : ''}${k.freight ? `${fmt(k.freight)} freight` : ''}</td>
+      <td colspan="8"></td>
     </tr>`));
     // Item rows (each item once)
     g.items.forEach((l, i) => html.push(`<tr class="line ${i === g.items.length - 1 ? 'last' : ''}">
       <td class="q-col"></td>
       <td class="line-idx">Item ${i + 1} of ${g.count}</td>
+      <td></td>
       <td>${g.carriers.length > 1 ? `<span class="badge ${carrierInfo(l.carrier).cls}">${esc(l.carrierLabel)}</span>` : ''}</td>
       <td class="muted">${g.soldtoMulti ? esc(l.soldtoName) : ''}</td>
       <td class="muted">${g.shiptoMulti ? `${esc(l.shiptoName)}<span class="sub">${esc([l.city, l.state].filter(Boolean).join(', '))}</span>` : ''}</td>
@@ -925,7 +955,7 @@ function renderTable() {
 // ── Export (one row per item; PRO / tracking numbers of its shipment) ──
 const EXPORT_HEADERS = ['Sold-To','Sold-To Name','Ship-To','Ship-To Name','Ship-To Street','City','State','Post Code',
   'Order Nbr','Order Date','PO Number','Delivery','Delivery Date','Scheduled','Actual Ship','Carrier','Carrier Name',
-  'ProNumber','Tracking Nbr(s)','Packages','Shipment (Tracking)','R-O SKU','Description','Qty','Units','Delv Value','Plant','Tracking Link'];
+  'ProNumber','PRO Link','Tracking Nbr(s)','Tracking Link','Packages','Shipment (Tracking)','R-O SKU','Description','Qty','Units','Delv Value','Plant'];
 function shipmentRefs(g) {
   // [{num, url}] — the PRO, or every package tracking number
   if (g.refType === 'pro') return [{ num: g.pro, url: linkFor(g.carrierCode, g.pro).url }];
@@ -939,8 +969,9 @@ function exportRows() {
     const first = refs.find(r => r.url);
     g.items.forEach(l => rows.push([l.soldto, l.soldtoName, l.shipto, l.shiptoName, l.street || g.street, l.city || g.city, l.state || g.state, l.zip || g.zip,
       l.order, fmtDate(l.orderDt), l.po, l.delivery, fmtDate(l.delvDt), fmtDate(l.sched), fmtDate(l.ship),
-      l.carrier, l.carrierName, g.refType === 'pro' ? g.pro : '', g.refType === 'trk' ? refs.map(r => r.num).join(', ') : '',
-      g.packages.length || '', l.shipment, l.sku, l.desc, l.qty || '', l.units, l.value || '', l.plant, first && !carrierInfo(g.carrierCode).noDeepLink ? first.url : (first ? first.url : '')]));
+      l.carrier, l.carrierName, g.refType === 'pro' ? g.pro : '', g.refType === 'pro' && first ? first.url : '',
+      g.refType === 'trk' ? refs.map(r => r.num).join(', ') : '', g.refType === 'trk' && first ? first.url : '',
+      g.packages.length || '', l.shipment, l.sku, l.desc, l.qty || '', l.units, l.value || '', l.plant]));
   });
   return rows;
 }
@@ -948,7 +979,13 @@ const stamp = () => new Date().toLocaleDateString('en-US').replace(/\//g,'-');
 function exportXLSX() {
   if (!groups.length) return;
   const ws = XLSX.utils.aoa_to_sheet([EXPORT_HEADERS, ...exportRows()]);
-  ws['!cols'] = [9,26,9,26,24,14,6,11,11,10,16,11,10,10,10,8,22,14,30,8,12,10,40,7,6,11,6,44].map(w => ({ wch: w }));
+  ws['!cols'] = [9,26,9,26,24,14,6,11,11,10,16,11,10,10,10,8,22,14,44,30,44,8,12,10,40,7,6,11,6].map(w => ({ wch: w }));
+  // clickable PRO / tracking links
+  const rng = XLSX.utils.decode_range(ws['!ref']);
+  for (let r = 1; r <= rng.e.r; r++) [[17, 18], [19, 20]].forEach(([numC, linkC]) => {
+    const lc = ws[XLSX.utils.encode_cell({ r, c: linkC })], nc = ws[XLSX.utils.encode_cell({ r, c: numC })];
+    if (lc && lc.v) { lc.l = { Target: lc.v }; if (nc && nc.v) nc.l = { Target: lc.v }; }
+  });
   ws['!autofilter'] = { ref: ws['!ref'] };
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'RO Daily Tracking');
@@ -1009,7 +1046,7 @@ function updateQueueUI() {
   const hb = document.getElementById('hdrQueueBtn');
   if (hb) { hb.style.display = allLines.length ? '' : 'none'; hb.querySelector('b').textContent = n; }
   document.querySelectorAll('.q-dl').forEach(b => b.disabled = !n);
-  document.querySelectorAll('#tbody input.q-check').forEach(cb => cb.checked = queue.has(cb.dataset.key));
+  document.querySelectorAll('#tbody button.q-add').forEach(b => { const on = queue.has(b.dataset.key); b.classList.toggle('on', on); b.textContent = on ? '✓ Queued' : '+ Queue'; });
   const all = document.getElementById('selAll');
   if (all) {
     const shown = groups.slice(0, MAX_ROWS);
@@ -1065,7 +1102,7 @@ function downloadQueue(kind) {
 
 // ── Excel: "Shipments" + "Packages" + "Items" sheets ──
 function queueXlsx(gs) {
-  const sumHead = ['PRO / Tracking #','Reference Type','Carrier','Carrier Name','Tracking Link','Sold-To','Sold-To Name','Ship-To','Ship-To Name',
+  const sumHead = ['PRO / Tracking #','Reference Type','Carrier','Carrier Name','PRO / Tracking Link','Sold-To','Sold-To Name','Ship-To','Ship-To Name',
     'City','State','Order Nbr','PO Number','Delivery','SAP Shipment','Order Date','Scheduled','Actual Ship','Delivery Date','Plant',
     'Packages','Weight (LB)','Freight (USD)','Items','Total Qty','Delv Value'];
   const sumRows = gs.map(g => {
