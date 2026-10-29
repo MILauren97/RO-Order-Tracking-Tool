@@ -204,6 +204,7 @@ td.line-idx { color: var(--muted); padding-left: 30px; font-size: 11px; white-sp
   border-left: 3px solid var(--red); color: var(--red);
   font-size: 11px; font-family: var(--font-mono); display: none;
 }
+.untracked-link { color: var(--amber); cursor: pointer; text-decoration: underline; }
 /* ── Queue ── */
 .ver { color: var(--accent); }
 th.q-col, td.q-col { width: 96px !important; padding-left: 10px !important; }
@@ -310,7 +311,7 @@ const PRODUCTS = {"100001":"SK 1GL 4PK ORIGINAL WATERPROOFER","100005":"SK 5GL O
   <div id="tableArea" style="display:none">
     <div class="controls">
       <input class="search-input" id="searchInput" type="text"
-             placeholder="Search description, item #, customer, sold-to, ship-to, carrier, PO #, order, PRO / tracking #…"
+             placeholder="Search description, item #, customer, sold-to, ship-to, carrier, PO #, order, PRO / tracking # — results show trackable shipments"
              oninput="onSearch(this.value)">
       <select class="filter-select" id="custFilter"    onchange="setFilter('cust', this.value)"><option value="">All sold-to customers</option></select>
       <select class="filter-select" id="carrierFilter" onchange="setFilter('carrier', this.value)"><option value="">All carriers</option></select>
@@ -511,6 +512,14 @@ let filteredLines = [];
 let groups = [];
 const expanded = new Set();
 const F = { search: '', cust: '', carrier: '', state: '', plant: '', ref: '' };
+let showUntracked = false;   // search results default to trackable shipments only
+function setShowUntracked(v) { showUntracked = v; applyFilters(); }
+// A shipment is trackable when its PRO, or at least one package tracking number, has a carrier link
+function isTrackable(g) {
+  if (g.refType === 'pro') return !!linkFor(g.carrierCode, g.pro).url;
+  if (g.refType === 'trk') return g.packages.some(k => linkFor(k.carrier || g.carrierCode, k.track).url);
+  return false;
+}
 let sortField = 'ship', sortDir = -1;
 
 // ── Columns (group-level) ──
@@ -710,7 +719,7 @@ function fillSelect(id, allLabel, values, labelFn) {
 
 // ── Filtering, grouping, sorting ──
 let searchTimer;
-function onSearch(v) { clearTimeout(searchTimer); searchTimer = setTimeout(() => { F.search = v; applyFilters(); }, 150); }
+function onSearch(v) { clearTimeout(searchTimer); searchTimer = setTimeout(() => { if (!v.trim()) showUntracked = false; F.search = v; applyFilters(); }, 150); }
 function setFilter(k, v) { F[k] = v; applyFilters(); }
 function clearFilters() {
   Object.keys(F).forEach(k => F[k] = '');
@@ -728,11 +737,22 @@ function applyFilters() {
     (!F.ref     || (F.ref === 'shp' ? (l.refType === 'shp' || l.refType === 'dlv') : F.ref === 'pro' ? (l.refType === 'pro' || l.refType === 'trk') : l.refType === F.ref)) &&
     (!terms.length || terms.every(t => l.hay.includes(t))));
   groups = buildGroups(filteredLines);
+  // When searching, only return shipments you can click to track (PRO or tracking number with a carrier link)
+  let hidden = 0;
+  if (terms.length && !showUntracked) {
+    const keep = groups.filter(isTrackable);
+    hidden = groups.length - keep.length;
+    groups = keep;
+    const keys = new Set(groups.map(g => g.key));
+    filteredLines = filteredLines.filter(l => keys.has(l.refKey));
+  }
   sortGroups();
-  const nRef = groups.filter(g => g.refType === 'pro' || g.refType === 'trk').length;
+  const nRef = groups.filter(isTrackable).length;
   const nItems = groups.reduce((s, g) => s + g.count, 0);
-  document.getElementById('rowCount').textContent =
-    `${plural(groups.length, 'shipment')} · ${nRef.toLocaleString()} with PRO/tracking · ${plural(nItems, 'item line')}`;
+  document.getElementById('rowCount').innerHTML =
+    `${plural(groups.length, 'shipment')} · ${nRef.toLocaleString()} trackable · ${plural(nItems, 'item line')}`
+    + (hidden ? ` · <a class="untracked-link" onclick="setShowUntracked(true)">${hidden.toLocaleString()} ${hidden === 1 ? 'match' : 'matches'} without a PRO / tracking # hidden — show</a>` : '')
+    + (terms.length && showUntracked ? ` · <a class="untracked-link" onclick="setShowUntracked(false)">trackable only</a>` : '');
   renderKpis();
   renderTable();
 }
@@ -886,7 +906,7 @@ const qtyStr = (q, u) => q ? `${q.toLocaleString()}${u ? ` <span class="cur">${e
 function renderTable() {
   const tb = document.getElementById('tbody');
   if (!groups.length) {
-    tb.innerHTML = `<tr><td colspan="${COLS.length + 1}" class="empty"><div class="empty-icon">🔍</div>No results matching current search / filters.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="${COLS.length + 1}" class="empty"><div class="empty-icon">🔍</div>No trackable shipments match this search / filters.${F.search && !showUntracked ? ' <a class="untracked-link" onclick="setShowUntracked(true)">Show matches without a PRO / tracking #</a>' : ''}</td></tr>`;
     return;
   }
   const html = [];
